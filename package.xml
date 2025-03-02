@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>icuas25_sm</name>
+  <version>0.0.1</version>
+  <description>Yasmin SM - Icuas25 Competition</description>
+  <maintainer email="seuemail@exemplo.com">Seu Nome</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>yasmin</exec_depend>
+  <exec_depend>ament_cmake</exec_depend>
+  <exec_depend>ament_python</exec_depend>
+
+</package>
