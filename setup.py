@@ -8,11 +8,16 @@ package_name = 'icuas25_sm'
 setup(
     name=package_name,
     version='0.0.1',
-    packages=find_packages(include=['icuas25_sm', 'icuas25_sm.*']),
+    packages=find_packages(include=['icuas25_sm', 'states*']),
+    package_dir={         
+        'icuas25_sm': 'icuas25_sm',
+        'states': 'states', 
+    },
     data_files=[
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'params'), glob('params/*.yaml')),
+        ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,7 +30,6 @@ setup(
     entry_points={
         'console_scripts': [
             'MainStateMachine = icuas25_sm.MainStateMachine:main',
-            'Data_Wrapper = icuas25_sm.Data_wrapper:main',
         ],
     },
 )

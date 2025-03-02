@@ -1,0 +1,3 @@
+state_machine:
+  layer_gap: 0.8
+  tolerance: 1.0

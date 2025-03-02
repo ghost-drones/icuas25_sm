@@ -11,7 +11,7 @@ from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 from nav_msgs.msg import Path
 
-class ManageSwarmNode(Node):
+class Data_Wrapper(Node):
     def __init__(self, drone_ids):
         super().__init__('data_wrapper_sm')
         self.drone_ids = drone_ids
@@ -21,7 +21,6 @@ class ManageSwarmNode(Node):
         self.trajectories = {}
         self.trajectories_id = {}
         self.trajectories_path = {}
-        self.clusters_data = []
 
         qos_profile = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -83,13 +82,31 @@ class ManageSwarmNode(Node):
     def trajectory_path_callback(self, msg, drone_id):
         self.trajectories_path[drone_id] = msg.poses
 
+    def get_drone_ids(self):
+        return self.drone_ids
+    
+    def get_pose(self, drone_id):
+        return self.poses[drone_id]
+
+    def get_battery(self, drone_id):
+        return self.batteries[drone_id]
+
+    def get_trajectory(self, drone_id):
+        return self.trajectories[drone_id]
+
+    def get_trajectory_ids(self, drone_id):
+        return self.trajectories_id[drone_id]
+
+    def get_trajectory_path(self, drone_id):
+        return self.trajectories_path[drone_id]
+
 def main(args=None):
     rclpy.init(args=args)
     
     num_robots = int(os.getenv("NUM_ROBOTS", "5"))
     drone_ids = list(range(1, num_robots + 1))
     
-    node = ManageSwarmNode(drone_ids)
+    node = Data_Wrapper(drone_ids)
     
     try:
         rclpy.spin(node)

@@ -2,7 +2,7 @@
 import rclpy
 from rclpy.node import Node
 from yasmin import StateMachine
-from icuas25_sm.States_AwaitingTrajectory import AwaitingTrajectory
+from states.States import *
 
 class MainStateMachineNode(Node):
     def __init__(self):
@@ -13,8 +13,16 @@ class MainStateMachineNode(Node):
 
         self.sm.add_state('Waiting_For_Trajectories', AwaitingTrajectory(self),
                     transitions={'Not_Received': 'Waiting_For_Trajectories',
-                                'Received_All': 'Done'})
+                                'Received_All': 'Takeoff'})
 
+        self.sm.add_state('Takeoff', Takeoff(self),
+                    transitions={'Not_Reached': 'Takeoff',
+                                'Reached': 'Done'})
+
+        self.sm.add_state('WaypointNav', WaypointNav(self),
+                    transitions={'Not_Reached': 'Takeoff',
+                                'Reached': 'Done'})
+        
     def run_state_machine(self):
         result = self.sm.execute()
         self.get_logger().info(f"Máquina de estados finalizada com resultado: {result}")

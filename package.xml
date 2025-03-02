@@ -6,11 +6,10 @@
   <maintainer email="seuemail@exemplo.com">Seu Nome</maintainer>
   <license>Apache-2.0</license>
 
-  <buildtool_depend>ament_python</buildtool_depend>
-
   <exec_depend>rclpy</exec_depend>
   <exec_depend>yasmin</exec_depend>
-  <exec_depend>ament_cmake</exec_depend>
-  <exec_depend>ament_python</exec_depend>
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
 
 </package>
