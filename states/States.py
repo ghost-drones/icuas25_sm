@@ -3,6 +3,7 @@ import rclpy
 from yasmin import State
 from states.Data_Wrapper import *
 from states.Control_Wrapper import *
+from states.Common_Ros_Node import CommonRosNode
 from geometry_msgs.msg import PoseStamped
 from copy import deepcopy
 
@@ -32,14 +33,14 @@ class AwaitingTrajectory(State):
             return 'Not_Received'
         
 class Takeoff(State):
-    def __init__(self, node):
+    def __init__(self, node:CommonRosNode):
         super().__init__(name="Takeoff", outcomes=["Not_Reached", "Reached"])
 
         self.data = Data_Wrapper()
         self.control = Control_Wrapper()
         self.node = node
-        self.layer_gap = rclpy.get_parameter("state_machine/layer_gap")
-        self.tolerance = rclpy.get_parameter("state_machine/tolerance")
+        self.layer_gap = node.get_parameter_value("state_machine/layer_gap")
+        self.tolerance = node.get_parameter_value("state_machine/tolerance")
         self.first_execution = True
         self.target = {}
 

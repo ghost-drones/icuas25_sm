@@ -3,8 +3,9 @@ import rclpy
 from rclpy.node import Node
 from yasmin import StateMachine
 from states.States import *
+from states.Common_Ros_Node import CommonRosNode
 
-class MainStateMachineNode(Node):
+class MainStateMachineNode(CommonRosNode):
     def __init__(self):
         super().__init__('main_statemachine')
         self.get_logger().info("Iniciando a Máquina de Estados Principal...")
