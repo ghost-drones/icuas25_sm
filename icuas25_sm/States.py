@@ -78,21 +78,43 @@ class DecideMovement(State):
         super().__init__(outcomes=["Done"])
 
         self.data = DataWrapper()
+        self.battery_threshold = 30
 
     def execute(self, data):
+
+        needs_recharging = False
+        
+        # Encontrar próximo Cluster
+        cluster_iteration = self.data.get_clusterIteration()
+        cluster_list = get_clusters_list(self.data.get_trajectory_all())
+
+        for drone_id in self.data.get_drone_ids():
+
+            # Encontrar passos até próximo Cluster
+            trajectory_ids = self.data.get_trajectory_ids(drone_id)
+            segment_till_cluster, segment_with_return = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_list)
+
+            # Calcular tempo/bateria necessária
+            trajectory_poses = self.data.get_poses_by_ids_list(segment_with_return)
+            battery_consumption_on_cluster = calculate_battery_consumption(trajectory_poses)
+            
+            # Drone conseguem fazer leitura do Cluster com bateria atual?
+            current_battery = self.data.get_battery(drone_id).percentage
+            battery_after_cluster = current_battery - battery_consumption_on_cluster
+
+            # Sim (Cluster = próxima prioridade)
+            self.data.next_cluster_waypoints[drone_id] = segment_till_cluster
+
+            if battery_after_cluster < self.battery_threshold:
+                needs_recharging = True
+        
+        if needs_recharging:
+            # Não (Cluster = 0)
+            segment_till_base = truncate_after_zero(segment_till_cluster)
+            for drone_id in self.data.get_drone_ids():
+                self.data.next_cluster_waypoints[drone_id] = segment_till_base
 
         return 'Done'
-    
-class Charging(State):
-    def __init__(self):
-        super().__init__(outcomes=["Below_Threshold", "Above_Threshold"])
-
-        self.data = DataWrapper()
-
-    def execute(self, data):
-
-        return 'Below_Threshold'
-        #return 'Above_Threshold'
     
 class ClusterNavSup(State):
     def __init__(self):
@@ -100,6 +122,12 @@ class ClusterNavSup(State):
 
         self.data = DataWrapper()
 
+        self.cluster_waypoints = {}
+
+        # Armazena passos até a finalização
+        for drone_id in self.data.get_drone_ids():
+            self.cluster_waypoints[drone_id] = self.data.next_cluster_waypoints[drone_id]
+    
     def execute(self, data):
 
         return 'Sent_Wp'
@@ -120,3 +148,14 @@ class ClusterNavExp(State):
         #return 'Navigating_To_Wp'
         #return 'Reached_Intermediary_Step'
         #return 'Reached_End_Of_Cluster'
+
+class Charging(State):
+    def __init__(self):
+        super().__init__(outcomes=["Below_Threshold", "Above_Threshold"])
+
+        self.data = DataWrapper()
+
+    def execute(self, data):
+
+        return 'Below_Threshold'
+        #return 'Above_Threshold'

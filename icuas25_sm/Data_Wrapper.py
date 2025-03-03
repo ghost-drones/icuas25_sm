@@ -6,11 +6,12 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, Pose
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 from nav_msgs.msg import Path
 from Functions_Wrapper import *
+from icuas25_msgs.msg import Waypoints
 
 # Serviços para controle
 from crazyflie_interfaces.srv import GoTo, Land, Takeoff
@@ -45,16 +46,34 @@ class DataWrapper(Node):
         self.trajectories = {}
         self.trajectories_id = {}
         self.trajectories_path = {}
+        self.trajectories_all = ""
 
         self.go_to_clients = {}
         self.land_clients = {}
         self.takeoff_clients = {}
+        self.next_cluster_waypoints = {}
+        
+        self.clusterIteration = 0
 
         # Configuração do QoS para os subscribers
         qos_profile = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
             depth=1,
             reliability=QoSReliabilityPolicy.RELIABLE
+        )
+
+        self.create_subscription(
+            String,
+            '/ghost/trajectory_encoded',
+            lambda msg, id=drone_id: self.trajectory_all_callback(msg, id),
+            qos_profile
+        )
+
+        self.create_subscription(
+            Waypoints,
+            '/ghost/waypoints',
+            self.waypoints_callback,
+            10
         )
 
         # Subscriptions para cada drone
@@ -118,6 +137,10 @@ class DataWrapper(Node):
         with self.data_lock:
             self.trajectories[drone_id] = msg.data
 
+    def trajectory_all_callback(self, msg):
+        with self.data_lock:
+            self.trajectories_all = msg.data
+
     def trajectory_ids_callback(self, msg, drone_id):
         with self.data_lock:
             self.trajectories_id[drone_id] = ast.literal_eval(msg.data)
@@ -126,6 +149,10 @@ class DataWrapper(Node):
         with self.data_lock:
             self.trajectories_path[drone_id] = msg.poses
 
+    def waypoints_callback(self, msg):
+        with self.data_lock:
+            self.waypoints = msg
+        
     # Métodos de acesso aos dados
     def get_drone_ids(self):
         return self.drone_ids
@@ -142,6 +169,10 @@ class DataWrapper(Node):
         with self.data_lock:
             return self.trajectories.get(drone_id, None)
 
+    def get_trajectory_all(self):
+        with self.data_lock:
+            return self.trajectories_all
+        
     def get_trajectory_ids(self, drone_id):
         with self.data_lock:
             return self.trajectories_id.get(drone_id, None)
@@ -149,6 +180,18 @@ class DataWrapper(Node):
     def get_trajectory_path(self, drone_id):
         with self.data_lock:
             return self.trajectories_path.get(drone_id, None)
+
+    def get_clusterIteration(self):
+        with self.data_lock:
+            return self.clusterIteration
+        
+    def get_waypoints(self):
+        with self.data_lock:
+            return self.waypoints
+    
+    def update_clusterIteration(self):
+        with self.data_lock:
+            self.clusterIteration += 1
 
     def send_takeoff(self, drone_id, height, duration_sec, group_mask=0):
         client = self.takeoff_clients[drone_id]
@@ -179,3 +222,30 @@ class DataWrapper(Node):
         request.duration.sec = int(duration_sec)
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
         client.call_async(request)
+
+    def get_pose_by_id(self, waypoint_id: int) -> Pose:
+
+        if waypoint_id == 0:
+            pose = Pose()
+            pose.position.x = 0.0
+            pose.position.y = 0.0
+            pose.position.z = 0.0
+            pose.orientation.x = 0.0
+            pose.orientation.y = 0.0
+            pose.orientation.z = 0.0
+            pose.orientation.w = 1.0
+            return pose
+
+        for waypoint in self.waypoints:
+            if waypoint.id == waypoint_id:
+                return waypoint.pose
+
+        raise ValueError(f"Waypoint com id {waypoint_id} não encontrado.")
+
+    def get_poses_by_ids_list(self, waypoint_ids: list) -> list:
+
+        poses = []
+        for wid in waypoint_ids:
+            pose = self.get_pose_by_id(wid)
+            poses.append(pose)
+        return poses
