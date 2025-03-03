@@ -11,7 +11,10 @@ from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 from nav_msgs.msg import Path
 
-class Data_Wrapper(Node):
+from .Common_Ros_Node import CommonRosNode
+
+class Data_Wrapper(CommonRosNode): #possivel bug por que vários caras o instanciam, gerando vários nós ROS?
+    #talvez herança ajude
     def __init__(self, drone_ids):
         super().__init__('data_wrapper_sm')
         self.drone_ids = drone_ids
@@ -99,7 +102,22 @@ class Data_Wrapper(Node):
 
     def get_trajectory_path(self, drone_id):
         return self.trajectories_path[drone_id]
+    
+    def get_full_poses(self):
+        return self.poses
+    
+    def get_full_battery(self):
+        return self.batteries
 
+    def get_full_trajectory(self):
+        return self.trajectories
+
+    def get_full_trajectory_ids(self):
+        return self.trajectories_id
+
+    def get_full_trajectory_path(self):
+        return self.trajectories_path
+    
 def main(args=None):
     rclpy.init(args=args)
     

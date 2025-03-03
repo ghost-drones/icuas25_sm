@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 import rclpy
 from yasmin import State
-from states.Data_Wrapper import *
-from states.Control_Wrapper import *
-from states.Common_Ros_Node import CommonRosNode
+from .Data_Wrapper import *
+from .Control_Wrapper import *
+from .Common_Ros_Node import CommonRosNode
 from geometry_msgs.msg import PoseStamped
 from copy import deepcopy
+from sensor_msgs.msg import BatteryState
 
 class AwaitingTrajectory(State):
     def __init__(self, node):
@@ -31,6 +32,53 @@ class AwaitingTrajectory(State):
             return 'Received_All'
         else:
             return 'Not_Received'
+
+class batteries():
+    def __init__(self):
+        self.data = Data_Wrapper()
+        self.batteries = self.data.get_full_battery()
+        self.poses = self.data.get_full_poses()
+        self.drone_ids = self.data.get_drone_ids()
+        self.avg_vel = 0.7
+        self.decrease_battery_value_per_second = 1
+        self.target = 20.0
+    
+    def calc_duration(self, pos_1:PoseStamped, pos_2:PoseStamped) -> float:
+        if isinstance(pos_1,PoseStamped) and isinstance(pos_2,PoseStamped):
+            position_01 = pos_1.pose.position
+            position_02 = pos_2.pose.position
+            pos_1 = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
+            pos_2 = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
+
+            duration = np.linalg.norm(pos_2 - pos_1) / self.avg_vel
+
+            return float(duration)
+      
+    def it_achieve(self,destination:Point) -> float:
+        
+        for drone_id in self.drone_ids:
+            batteries = self.batteries[drone_id]
+            if isinstance(batteries,BatteryState):
+                percentage = batteries.percentage
+            
+            pose = self.poses[drone_id]
+            if isinstance(pose,PoseStamped):
+                position = pose.pose.position
+                duration = self.calc_duration(position,destination)
+                battery_usage_forecast = duration*self.avg_vel*self.decrease_battery_value_per_second
+                if (percentage - battery_usage_forecast) < self.target:
+                    return False
+                else:
+                    return True
+                
+                
+        
+        
+            
+        
+        
+        
+                
         
 class Takeoff(State):
     def __init__(self, node:CommonRosNode):

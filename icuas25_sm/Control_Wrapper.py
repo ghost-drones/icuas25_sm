@@ -8,7 +8,9 @@ from geometry_msgs.msg import PoseStamped
 from crazyflie_interfaces.srv import GoTo, Land, Takeoff
 from tf_transformations import euler_from_quaternion
 
-class Control_Wrapper(Node):
+from states.Common_Ros_Node import CommonRosNode
+
+class Control_Wrapper(CommonRosNode):
     def __init__(self, drone_ids):
         super().__init__('control_wrapper_node')
         self.drone_ids = drone_ids

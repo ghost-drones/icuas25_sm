@@ -2,8 +2,9 @@
 import rclpy
 from rclpy.node import Node
 from yasmin import StateMachine
-from states.States import *
-from states.Common_Ros_Node import CommonRosNode
+from .Common_Ros_Node import CommonRosNode
+from .States import State
+
 
 class MainStateMachineNode(CommonRosNode):
     def __init__(self):
