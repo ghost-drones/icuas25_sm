@@ -1,19 +1,18 @@
 #!/usr/bin/env python3
 import rclpy
 from Data_Wrapper import *
-from Control_Wrapper import *
 from Common_Ros_Node import CommonRosNode
 from geometry_msgs.msg import PoseStamped, Point
 from copy import deepcopy
 from smach import State
 from icuas25_msgs.srv import PathService
+from Functions_Wrapper import *
 
 class AwaitingTrajectory(State):
     def __init__(self):
         super().__init__(outcomes=["Not_Received", "Received_All"])
 
         self.data = DataWrapper()
-        self.control = ControlWrapper()
 
     def execute(self, userdata):
         received_value = 0
@@ -40,10 +39,9 @@ class Takeoff(State):
         super().__init__(outcomes=["Not_Reached", "Reached"])
 
         self.data = DataWrapper()
-        self.control = ControlWrapper()
         self.layer_gap = 0.8 #node.get_parameter_value("layer_gap")
         self.tolerance = 1.0 #node.get_parameter_value("tolerance")
-        self.first_execution = True
+        self.first_execution = [True] * len(self.data.get_drone_ids())
         self.target = {}
 
     def execute(self, data):
@@ -53,24 +51,25 @@ class Takeoff(State):
         for drone_id in self.data.get_drone_ids():
             current_pose = self.data.get_pose(drone_id)
 
-            if self.first_execution: # Envia os setpoints
+            if self.first_execution[drone_id-1]: # Envia os setpoints (-1 porque os drone_ids sempre começam com 1)
 
                 target_pose = deepcopy(current_pose)
                 target_pose.pose.position.z = self.layer_gap * drone_id
 
-                duration = self.control.calc_duration(current_pose, target_pose)
+                duration = calc_duration(current_pose, target_pose)
 
-                self.control.send_takeoff(drone_id, target_pose.pose.position.z, duration_sec=duration)
+                self.data.send_takeoff(drone_id, target_pose.pose.position.z, duration_sec=duration)
                 self.target[drone_id] = target_pose
 
-                self.first_execution = False
+                self.first_execution[drone_id-1] = False
+
                 return 'Not_Reached'
             else:
                 # Checa todos os setpoints para ver se já chegaram ao destino
-                if self.control.is_pose_reached(current_pose, self.target[drone_id], self.tolerance):
+                if is_pose_reached(current_pose, self.target[drone_id], self.tolerance):
                     received_value += 1
         
-        if received_value == len(self.data.get_drone_ids):
+        if received_value == len(self.data.get_drone_ids()):
             return 'Reached'
         else:
             return 'Not_Reached'

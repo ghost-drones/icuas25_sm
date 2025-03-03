@@ -15,6 +15,7 @@ def generate_launch_description():
     )
 
     # Data_Wrapper node
+    """
     sm_wrapper_node = Node(
         package='icuas25_sm',
         executable='Data_Wrapper.py',
@@ -22,7 +23,8 @@ def generate_launch_description():
         output='screen',
         parameters=[state_params]
     )
-
+    
+    
     # Control_Wrapper node
     sm_control_wrapper_node = Node(
         package='icuas25_sm',
@@ -31,6 +33,7 @@ def generate_launch_description():
         output='screen',
         parameters=[state_params]
     )
+    """
 
     # MainStateMachine node
     sm_state_machine_node = Node(
@@ -42,9 +45,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        sm_wrapper_node,
+        #sm_wrapper_node,
         sm_state_machine_node,
-        sm_control_wrapper_node,
+        #sm_control_wrapper_node,
     ])
 
 if __name__ == '__main__':

@@ -81,12 +81,12 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
-  icuas25_sm/Control_Wrapper.py
+  icuas25_sm/Common_Ros_Node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 install(PROGRAMS
-  icuas25_sm/Common_Ros_Node.py
+  icuas25_sm/Functions_Wrapper.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
