@@ -8,9 +8,24 @@ from geometry_msgs.msg import PoseStamped
 from crazyflie_interfaces.srv import GoTo, Land, Takeoff
 from tf_transformations import euler_from_quaternion
 
-class Control_Wrapper(Node):
-    def __init__(self, drone_ids):
+class ControlWrapper(Node):
+    _instance = None  # Instância única
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super(ControlWrapper, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self):
+        # Evita reinicialização
+        if hasattr(self, '_initialized') and self._initialized:
+            return
+        self._initialized = True
+
         super().__init__('control_wrapper_node')
+
+        num_robots = int(os.getenv("NUM_ROBOTS", "5"))
+        drone_ids = list(range(1, num_robots + 1))
         self.drone_ids = drone_ids
 
         self.go_to_clients = {}
@@ -46,9 +61,25 @@ class Control_Wrapper(Node):
         p2 = np.array([pos_2.pose.position.x, pos_2.pose.position.y, pos_2.pose.position.z])
         return np.linalg.norm(p2 - p1) / avr_vel
 
+    def get_flat_index(self, drone_id, step, substep):
+        steps = self.trajectories_id[drone_id]
+        flat_index = 0
+        for i in range(step):
+            elem = steps[i]
+            if isinstance(elem, list):
+                flat_index += len(elem)
+            else:
+                flat_index += 1
+        current_elem = steps[step]
+        if isinstance(current_elem, list):
+            flat_index += substep
+        else:
+            flat_index += 0
+        return flat_index
+    
     def send_takeoff(self, drone_id, height, duration_sec, group_mask=0):
 
-        client = self.go_to_clients[drone_id]
+        client = self.takeoff_clients[drone_id]
         
         request = Takeoff.Request()
         request.group_mask = group_mask
@@ -75,7 +106,7 @@ class Control_Wrapper(Node):
 
     def send_land(self, drone_id, height, duration_sec, group_mask=0):
         
-        client = self.go_to_clients[drone_id]
+        client = self.land_clients[drone_id]
 
         request = Land.Request()
         request.group_mask = group_mask
@@ -84,22 +115,3 @@ class Control_Wrapper(Node):
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
 
         client.call_async(request)
-
-def main(args=None):
-    rclpy.init(args=args)
-    
-    num_robots = int(os.getenv("NUM_ROBOTS", "5"))
-    drone_ids = list(range(1, num_robots + 1))
-    
-    node = Control_Wrapper(drone_ids)
-    
-    try:
-        rclpy.spin(node)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()

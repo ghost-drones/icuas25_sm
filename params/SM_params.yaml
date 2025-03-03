@@ -1,3 +1,6 @@
 state_machine:
-  layer_gap: 0.8
-  tolerance: 1.0
+  ros__parameters:
+    layer_gap: 0.8
+    tolerance: 1.0
+    rate: 100
+    circle_radius: 0.5

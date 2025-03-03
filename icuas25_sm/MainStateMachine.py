@@ -1,42 +1,82 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from yasmin import StateMachine
-from states.States import *
-from states.Common_Ros_Node import CommonRosNode
+from rclpy.executors import MultiThreadedExecutor
+import threading
 
-class MainStateMachineNode(CommonRosNode):
-    def __init__(self):
-        super().__init__('main_statemachine')
-        self.get_logger().info("Iniciando a Máquina de Estados Principal...")
+from smach import StateMachine, State
+from Data_Wrapper import DataWrapper
+from Control_Wrapper import ControlWrapper
+from States import *
 
-        self.sm = StateMachine(initial_state='AwaitingTrajectory', outcomes=['End'])
+# Função que executa a máquina de estados em uma thread separada
+def state_machine_thread():
+    sm_node = Node('main_sm')
 
-        self.sm.add_state('Waiting_For_Trajectories', AwaitingTrajectory(self),
+    sm = StateMachine(outcomes=['End'])
+    sm.node = sm_node
+    """
+        StateMachine.add('Waiting_For_Trajectories', AwaitingTrajectory(),
                     transitions={'Not_Received': 'Waiting_For_Trajectories',
                                 'Received_All': 'Takeoff'})
-
-        self.sm.add_state('Takeoff', Takeoff(self),
+    
+        StateMachine.add('Takeoff', Takeoff(self),
                     transitions={'Not_Reached': 'Takeoff',
-                                'Reached': 'Done'})
+                                'Reached': 'WaypointNav'})
 
-        self.sm.add_state('WaypointNav', WaypointNav(self),
-                    transitions={'Not_Reached': 'Takeoff',
-                                'Reached': 'Done'})
+        StateMachine.add('WaypointNav', WaypointNav(self),
+                    transitions={'Executing': 'WaypointNav',
+                                 'Low_Battery': 'Return2Home',
+                                 'Finished': 'Return2Home'})
+
+
+        self.sm.add_state('Return2Home', Return2Home(self),
+                    transitions={'Executing': 'Return2Home',
+                                 'Reached_Base': 'HomeActions'})
+
+        self.sm.add_state('HomeActions', HomeActions(self),
+                    transitions={'Recharging': 'HomeActions',
+                                 'Charged': 'WaypointNav',
+                                 'Finished_Traj': 'End'})
+    """
+
+    with sm:
+        StateMachine.add('Waiting_For_Trajectories', AwaitingTrajectory(), 
+                           transitions={'Not_Received': 'Waiting_For_Trajectories',
+                                        'Received_All': 'Takeoff'})
         
-    def run_state_machine(self):
-        result = self.sm.execute()
-        self.get_logger().info(f"Máquina de estados finalizada com resultado: {result}")
+        StateMachine.add('Takeoff', Takeoff(),
+                    transitions={'Not_Reached': 'Takeoff',
+                                'Reached': 'End'})
+        
+    outcome = sm.execute()
+    sm_node.get_logger().info(f"Máquina de estados finalizada com outcome: {outcome}")
+    sm_node.destroy_node()
 
-def main(args=None):
-    rclpy.init(args=args)
-    node = MainStateMachineNode()
+def main():
+    rclpy.init()
+
+    # Instancia o DataWrapper (singleton)
+    data_wrapper = DataWrapper()
+    control_wrapper = ControlWrapper()
+
+    executor = MultiThreadedExecutor()
+    executor.add_node(data_wrapper)
+    executor.add_node(control_wrapper)
+
+    sm_thread = threading.Thread(target=state_machine_thread)
+    sm_thread.start()
+
     try:
-        node.run_state_machine()
+        executor.spin()
     except KeyboardInterrupt:
-        node.get_logger().info("Encerrando a máquina de estados.")
+        data_wrapper.get_logger().info("Encerrando execução...")
+        control_wrapper.get_logger().info("Encerrando execução...")
     finally:
+        data_wrapper.destroy_node()
+        control_wrapper.destroy_node()
         rclpy.shutdown()
+        sm_thread.join()
 
 if __name__ == '__main__':
     main()
