@@ -89,17 +89,20 @@ class DecideMovement(State):
         
         # Encontrar próximo Cluster
         cluster_iteration = self.data.get_clusterIteration()
+        self.data.get_logger().info(str(self.data.get_trajectory_all()))
         cluster_list = get_clusters_list(self.data.get_trajectory_all())
+        self.data.get_logger().info(str(cluster_list))
         #next_cluster = cluster_list[cluster_iteration] -> Cluster ID
         
         for drone_id in self.drone_ids:
 
             # Encontrar passos até próximo Cluster
             trajectory_ids = self.data.get_trajectory_ids(drone_id)
+
             segment_till_cluster, segment_with_return = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_list)
-        
+
             # Calcular tempo/bateria necessária
-            trajectory_poses = self.data.get_poses_by_ids_list(segment_with_return)
+            trajectory_poses = self.data.get_poses_by_ids_list(flatten(segment_with_return))
             battery_consumption_on_cluster = calculate_battery_consumption(trajectory_poses)
             
             # Drone conseguem fazer leitura do Cluster com bateria atual?

@@ -145,7 +145,7 @@ class DataWrapper(Node):
 
     def trajectory_all_callback(self, msg):
         with self.data_lock:
-            self.trajectories_all = msg.data
+            self.trajectories_all = ast.literal_eval(msg.data)
 
     def trajectory_ids_callback(self, msg, drone_id):
         with self.data_lock:
@@ -242,7 +242,7 @@ class DataWrapper(Node):
             pose.orientation.w = 1.0
             return pose
 
-        for waypoint in self.waypoints:
+        for waypoint in self.waypoints.waypoints:
             if waypoint.id == waypoint_id:
                 return waypoint.pose
 

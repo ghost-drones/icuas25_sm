@@ -21,7 +21,7 @@ def state_machine_thread(sm_node):
         
         StateMachine.add('Takeoff', Takeoff(),
                            transitions={'Not_Reached': 'Takeoff',
-                                        'Reached': 'End'})
+                                        'Reached': 'DecideMovement'})
         
         StateMachine.add('DecideMovement', DecideMovement(),
                            transitions={'Finished': 'ClusterNavSup'})

@@ -56,7 +56,21 @@ def get_flat_index(trajectories_id, step, substep):
     return flat_index
 
 def get_clusters_list(lista):
-    return [int(item[1:]) for item in lista if item.startswith("E")]
+    clusters = []
+    for item in lista:
+        item = item.strip()
+        if item.startswith("E") and len(item) > 1:
+            clusters.append(int(item[1:]))
+    return clusters
+
+def flatten(a):  
+    res = []  
+    for x in a:  
+        if isinstance(x, list):  
+            res.extend(flatten(x))  # Recursively flatten nested lists  
+        else:  
+            res.append(x)  # Append individual elements  
+    return res  
 
 def get_trajectory_segment(cluster_index, trajectory_ids, cluster_list):
     
