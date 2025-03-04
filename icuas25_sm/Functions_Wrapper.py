@@ -3,18 +3,39 @@ from tf_transformations import euler_from_quaternion
 import math
 import numpy as np
 
-def is_pose_reached(current_pose: PoseStamped, target_pose: PoseStamped, tolerance=1.0) -> bool:
-    dx = current_pose.pose.position.x - target_pose.pose.position.x
-    dy = current_pose.pose.position.y - target_pose.pose.position.y
-    dz = current_pose.pose.position.z - target_pose.pose.position.z
+def is_pose_reached(current_pose, target_pose, tolerance=1.0) -> bool:
+
+    if isinstance(current_pose,PoseStamped):
+        current_pose = current_pose.pose.position
+    elif isinstance(current_pose,Pose):
+        current_pose = current_pose.position
+    else:
+        return 0.0
+    if isinstance(target_pose,PoseStamped):
+        target_pose = target_pose.pose.position
+    elif isinstance(target_pose,Pose):
+        target_pose = target_pose.position
+    else:
+        return 0.0
+    
+    dx = current_pose.x - target_pose.x
+    dy = current_pose.y - target_pose.y
+    dz = current_pose.z - target_pose.z
     distance = math.sqrt(dx*dx + dy*dy + dz*dz)
     return distance < tolerance
 
-def get_yaw_from_pose(pose: PoseStamped) -> float:
-    quat = [pose.pose.orientation.x,
-            pose.pose.orientation.y,
-            pose.pose.orientation.z,
-            pose.pose.orientation.w]
+def get_yaw_from_pose(pose) -> float:
+    if isinstance(pose,PoseStamped):
+        pose = pose.pose.orientation
+    elif isinstance(pose,Pose):
+        pose = pose.orientation
+    else:
+        return 0.0
+    
+    quat = [pose.x,
+            pose.y,
+            pose.z,
+            pose.w]
     _, _, yaw = euler_from_quaternion(quat)
     return yaw
 
@@ -186,11 +207,12 @@ def get_support_segments(data, cluster_index):
 
 def extract_unique_ids(data):
     unique_ids = []
-    for values in data.values():
-        for item in values:
-            if not isinstance(item, list):
-                if item not in unique_ids:
-                    unique_ids.append(item)
+    for element in data:
+        if isinstance(element, list):
+            pass
+        else:
+            if element not in unique_ids:
+                unique_ids.append(element)
     return unique_ids
  
 def get_current_trajectory_id(trajectory_ids:list,current_iteration:int) -> int:

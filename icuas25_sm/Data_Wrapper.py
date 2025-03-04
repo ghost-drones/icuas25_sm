@@ -208,13 +208,13 @@ class DataWrapper(Node):
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
         client.call_async(request)
 
-    def send_go_to(self, drone_id, pose: PoseStamped, duration_sec, group_mask=0, relative=False):
+    def send_go_to(self, drone_id, pose: Pose, duration_sec, group_mask=0, relative=False):
         client = self.go_to_clients[drone_id]
         yaw = get_yaw_from_pose(pose)
         request = GoTo.Request()
         request.group_mask = group_mask
         request.relative = relative
-        request.goal = pose.pose.position
+        request.goal = pose.position
         request.yaw = yaw
         request.duration.sec = int(duration_sec)
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
@@ -270,3 +270,12 @@ class DataWrapper(Node):
             self.path_response = future.result()
         except Exception as e:
             self.get_logger().error(f"Ghost/path_planner service call failed: {e}")
+
+    def log_crazy(self, msg):
+        self.get_logger().info("\nDEBUG \nDEBUG \nDEBUG \nDEBUG \nDEBUG")
+
+        for i in range(len(msg)):
+            if isinstance(msg[i], str):
+                self.get_logger().info(msg[i])
+            else:
+                self.get_logger().info(str(msg[i]))
