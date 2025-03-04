@@ -164,3 +164,12 @@ def get_support_segments(data, cluster_index):
         support_next_cluster = []
     
     return support_current_cluster, support_next_cluster
+
+def extract_unique_ids(data):
+    unique_ids = []
+    for values in data.values():
+        for item in values:
+            if not isinstance(item, list):
+                if item not in unique_ids:
+                    unique_ids.append(item)
+    return unique_ids

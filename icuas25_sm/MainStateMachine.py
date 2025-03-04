@@ -33,15 +33,13 @@ def state_machine_thread(sm_node):
         StateMachine.add('ClusterNavSup', ClusterNavSup(),
                            transitions={'Sent_Wp': 'ClusterNavSup',
                                         'Navigating_To_Wp': 'ClusterNavSup',
-                                        'Reached_Intermediary_Step': 'ClusterNavSup',
                                         'Reached_Base_and_Needs_Battery': 'Charging',
                                         'Next_Step_Exploration': 'ClusterNavExp'})
         
         StateMachine.add('ClusterNavExp', ClusterNavExp(),
-                           transitions={'Sent_Wp': 'ClusterNavExp',
-                                        'Navigating_To_Wp': 'ClusterNavExp',
-                                        'Reached_Intermediary_Step': 'ClusterNavExp',
-                                        'Reached_End_Of_Cluster': 'DecideMovement'})  
+                           transitions={'Navigating': 'ClusterNavExp',
+                                        'Reached_End_Of_Cluster': 'DecideMovement'})
+        
     outcome = sm.execute()
     sm_node.get_logger().info(f"Finished run: {outcome}")
     sm_node.destroy_node()

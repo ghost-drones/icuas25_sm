@@ -59,7 +59,7 @@ class DataWrapper(Node):
         self.client_path_planner = self.create_client(PathService, '/ghost/path_planner')
         while not self.client_path_planner.wait_for_service(timeout_sec=1.0):
             self.get_logger().info('Service /ghost/path_planner not available, waiting again...')
-            
+
         # Configuração do QoS para os subscribers
         qos_profile = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -194,7 +194,7 @@ class DataWrapper(Node):
         with self.data_lock:
             return self.waypoints
     
-    def update_clusterIteration(self):
+    def increase_clusterIteration(self):
         with self.data_lock:
             self.clusterIteration += 1
 

@@ -162,7 +162,6 @@ class ClusterNavSup(State):
                     current_destination = self.cluster_waypoints[drone_id][self.support_step]
                     current_support = self.support_current_cluster[self.support_step]
 
-                    # GRANDES CHANCES DE DAR ERRO, VERIFICAR
                     self.target_pose[drone_id] = self.data.request_traverse_origin(
                         origin=current_pose, 
                         destination=self.data.get_pose_by_id(current_destination).position, 
@@ -178,30 +177,85 @@ class ClusterNavSup(State):
 
             return 'Sent_Wp'
         else:
+
+            finished_current_step = {}
+
             for drone_id in self.drone_ids:
                 current_pose = self.data.get_pose(drone_id)
 
                 if not is_pose_reached(current_pose, self.target_pose[drone_id]):
-                    return 'Navigating_To_Wp'
+                    finished_current_step[drone_id] = True
+                    
+            if all(finished_current_step.get(d, False) for d in self.drone_ids):
+                if self.support_step == len(self.cluster_waypoints[self.last_drone]) and self.cluster_waypoints[self.last_drone][self.support_step] == 0:
+                    return 'Reached_Base_and_Needs_Battery'
                 else:
-                    if self.support_step == len(self.cluster_waypoints[self.last_drone]) and self.cluster_waypoints[self.last_drone][self.support_step] == 0:
-                        return 'Reached_Base_and_Needs_Battery'
-                    else:
-                        self.support_step += 1
-                        return 'Reached_Intermediary_Step'
-    
+                    self.support_step += 1
+                    self.command_sent = False
+                    return 'Reached_Intermediary_Step'
+            else:
+                return 'Navigating_To_Wp'
+            
 class ClusterNavExp(State):
     def __init__(self):
-        super().__init__(outcomes=["Sent_Wp", "Navigating_To_Wp", "Reached_Intermediary_Step", "Reached_End_Of_Cluster"])
+        super().__init__(outcomes=["Navigating", "Reached_End_Of_Cluster"])
 
         self.data = DataWrapper()
+        self.cluster_waypoints = {}
+        self.target_pose = {}
+        self.support_step = {}
+        self.command_sent = {}
+        self.drone_ids = self.data.get_drone_ids()
+
+        # Armazena passos até a finalização
+        for drone_id in self.drone_ids:
+            self.cluster_waypoints[drone_id] = self.data.next_cluster_waypoints[drone_id][-1]
+
+        self.unique_ids = extract_unique_ids(self.drone_ids[-1])
 
     def execute(self, data):
+        
+        drones_reached = 0
 
-        return 'Sent_Wp'
-        #return 'Navigating_To_Wp'
-        #return 'Reached_Intermediary_Step'
-        #return 'Reached_End_Of_Cluster'
+        for drone_id in self.drone_ids:
+            current_pose = self.data.get_pose(drone_id)
+
+            if not self.command_sent[drone_id]: # Target já foi publicado?
+                
+                # Calcula Target
+                self.target_pose[drone_id] = self.cluster_waypoints[drone_id][self.support_step]
+                
+                # Target é também algum suporte?
+                if self.target_pose[drone_id] not in self.unique_ids:
+                    duration = calc_duration(current_pose, self.target_pose[drone_id])
+                    self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)  
+                    self.command_sent[drone_id] = True
+                else:
+                    # Final da sua lista? (Com id de suporte)
+                    if self.support_step[drone_id] == len(self.cluster_waypoints[drone_id]-1):
+                        drones_reached += 1
+                    else:
+                        self.support_step[drone_id] += 1
+                        self.command_sent[drone_id] = False
+            else:
+                
+                # Chegou ao Waypoint?
+                if is_pose_reached(current_pose, self.target_pose[drone_id]):
+
+                    # Final da sua lista?
+                    if self.support_step[drone_id] == len(self.cluster_waypoints[drone_id]-1):
+                        drones_reached += 1
+                    else:
+                        self.support_step[drone_id] += 1
+                        self.command_sent[drone_id] = False
+                 
+        if drones_reached == len(self.cluster_waypoints[-1]):
+            self.data.increase_clusterIteration()
+
+            return "Reached_End_Of_Cluster"
+        else:
+            return "Navigating"
+                    
 
 class Charging(State):
     def __init__(self):
