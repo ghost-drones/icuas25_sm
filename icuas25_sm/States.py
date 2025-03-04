@@ -266,7 +266,9 @@ class Charging(State):
         self.data = DataWrapper()
         self.bat_lim = 90.0
         self.drone_ids = self.data.get_drone_ids()
-        self.decrease_battery_value_per_second = 1
+
+        # A cada 1min 20s, perde-se 10% da bateria. (A cada segundo, perde-se 1/8% de bateria)
+        self.decrease_battery_value_per_second = 1/8
         
         battery_usage_forecast = {}
         for drone_id in self.drone_ids:
@@ -304,7 +306,7 @@ class Charging(State):
         max_battery_usage_forecast = battery_usage_forecast[drone_id_max_attery_forecast]
         
         # garantindo que tenha no minimo 20% ao voltar
-        max_battery_usage_forecast += 20.0  
+        max_battery_usage_forecast += 20.0
         
         if max_battery_usage_forecast < 90.0 and max_battery_usage_forecast > 30.0:
             self.bat_lim = max_battery_usage_forecast

@@ -181,10 +181,10 @@ def extract_unique_ids(data):
  
 def get_current_trajectory_id(trajectory_ids:list,current_iteration:int) -> int:
     current = 0
-    for element in trajectory_ids:
+    for count, element in enumerate(trajectory_ids):
         if isinstance(element,list):
             if current == current_iteration:
                 break
             else:
                 current+=1
-    return current
+    return count
