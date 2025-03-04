@@ -18,21 +18,26 @@ def get_yaw_from_pose(pose: PoseStamped) -> float:
     _, _, yaw = euler_from_quaternion(quat)
     return yaw
 
-def calc_duration(pos_1, pos_2,avr_vel) -> float:
-        if isinstance(pos_1,PoseStamped) and isinstance(pos_2,PoseStamped):
-            position_01 = pos_1.pose.position
-            position_02 = pos_2.pose.position
-        elif isinstance(pos_1,Pose) and isinstance(pos_2,Pose):
-            position_01 = pos_1.position
-            position_02 = pos_2.position
-        else:
-            return 0.0
-        pos_1 = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
-        pos_2 = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
+def calc_duration(pos_1, pos_2,avr_vel=1.2) -> float:
+    
+    if isinstance(pos_1,PoseStamped):
+        position_01 = pos_1.pose.position
+    elif isinstance(pos_1,Pose):
+        position_01 = pos_1.position
+    else:
+        return 0.0
+    if isinstance(pos_2,PoseStamped):
+        position_02 = pos_2.pose.position
+    elif isinstance(pos_2,Pose):
+        position_02 = pos_2.position
+    else:
+        return 0.0
+    position_01_np_array = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
+    position_02_np_array = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
 
-        duration = np.linalg.norm(pos_2 - pos_1) / avr_vel
+    duration = np.linalg.norm(position_02_np_array - position_01_np_array) / avr_vel
 
-        return float(duration)
+    return float(duration)
 
 def get_flat_index(trajectories_id, step, substep):
     steps = trajectories_id
@@ -121,3 +126,13 @@ def truncate_after_zero(lst: list) -> list:
         if num == 0:
             break
     return truncated
+
+def get_current_trajectory_id(trajectory_ids:list,current_iteration:int) -> int:
+    current = 0
+    for element in trajectory_ids:
+        if isinstance(element,list):
+            if current == current_iteration:
+                break
+            else:
+                current+=1
+    return current

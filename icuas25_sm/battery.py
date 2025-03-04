@@ -1,5 +1,5 @@
 from icuas25_sm.icuas25_sm.Data_Wrapper import Data_Wrapper
-from geometry_msgs.msg import PoseStamped, Point
+from geometry_msgs.msg import PoseStamped, Pose
 from sensor_msgs.msg import BatteryState
 import numpy as np
 from std_msgs.msg import String
@@ -15,16 +15,21 @@ class batteries():
         self.decrease_battery_value_per_second = 1
         self.target = 20.0
     
-    def calc_duration(self, pos_1:PoseStamped, pos_2:PoseStamped) -> float:
+    def calc_duration(self, pos_1, pos_2) -> float:
         if isinstance(pos_1,PoseStamped) and isinstance(pos_2,PoseStamped):
             position_01 = pos_1.pose.position
             position_02 = pos_2.pose.position
-            pos_1 = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
-            pos_2 = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
+        elif isinstance(pos_1,Pose) and isinstance(pos_2,Pose):
+            position_01 = pos_1.position
+            position_02 = pos_2.position
+        else:
+            return 0.0
+        pos_1 = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
+        pos_2 = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
 
-            duration = np.linalg.norm(pos_2 - pos_1) / self.avg_vel
+        duration = np.linalg.norm(pos_2 - pos_1) / self.avg_vel
 
-            return float(duration)
+        return float(duration)
       
     def it_achieve(self,cluster_origin:int) -> float:
         
