@@ -208,13 +208,20 @@ class DataWrapper(Node):
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
         client.call_async(request)
 
-    def send_go_to(self, drone_id, pose: Pose, duration_sec, group_mask=0, relative=False):
+    def send_go_to(self, drone_id, pose, duration_sec, group_mask=0, relative=False):
         client = self.go_to_clients[drone_id]
         yaw = get_yaw_from_pose(pose)
         request = GoTo.Request()
         request.group_mask = group_mask
         request.relative = relative
-        request.goal = pose.position
+
+        if isinstance(pose,Pose):
+            request.goal = pose.position
+        elif isinstance(pose,PoseStamped):
+            request.goal = pose.pose.position
+        else: # Point
+            request.goal = pose
+        
         request.yaw = yaw
         request.duration.sec = int(duration_sec)
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
@@ -256,23 +263,29 @@ class DataWrapper(Node):
             poses.append(pose)
         return poses
 
-    def request_traverse_origin(self, origin: Point, destination: Point, support: Point):
+    def request_traverse_origin_sync(self, origin: Point, destination: Point, support: Point):
+        # Cria a requisição preenchendo os pontos
         request = PathService.Request()
         request.origin = Point(x=origin.x, y=origin.y, z=origin.z)
         request.destination = Point(x=destination.x, y=destination.y, z=destination.z)
         request.support = Point(x=support.x, y=support.y, z=support.z)
 
+        # Faz a chamada assíncrona
         future = self.client_path_planner.call_async(request)
-        future.add_done_callback(self.handle_path_response)
+        
+        # Bloqueia até que o future seja completado
+        rclpy.spin_until_future_complete(self, future)
 
-    def handle_path_response(self, future):
         try:
-            self.path_response = future.result()
+            # Obtém a resposta do serviço
+            response = future.result()
+            return response
         except Exception as e:
             self.get_logger().error(f"Ghost/path_planner service call failed: {e}")
+            return None
 
     def log_crazy(self, msg):
-        self.get_logger().info("\nDEBUG \nDEBUG \nDEBUG \nDEBUG \nDEBUG")
+        self.get_logger().info("--- LOG DEBUG ---")
 
         for i in range(len(msg)):
             if isinstance(msg[i], str):

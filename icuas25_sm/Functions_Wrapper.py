@@ -2,6 +2,7 @@ from geometry_msgs.msg import PoseStamped,Pose
 from tf_transformations import euler_from_quaternion
 import math
 import numpy as np
+import time
 
 def is_pose_reached(current_pose, target_pose, tolerance=1.0) -> bool:
 
@@ -9,14 +10,15 @@ def is_pose_reached(current_pose, target_pose, tolerance=1.0) -> bool:
         current_pose = current_pose.pose.position
     elif isinstance(current_pose,Pose):
         current_pose = current_pose.position
-    else:
-        return 0.0
+    else: # Point
+        current_pose = current_pose
+    
     if isinstance(target_pose,PoseStamped):
         target_pose = target_pose.pose.position
     elif isinstance(target_pose,Pose):
         target_pose = target_pose.position
-    else:
-        return 0.0
+    else: # Point
+        target_pose = target_pose
     
     dx = current_pose.x - target_pose.x
     dy = current_pose.y - target_pose.y
@@ -76,12 +78,14 @@ def get_flat_index(trajectories_id, step, substep):
         flat_index += 0
     return flat_index
 
-def get_clusters_list(lista):
+def get_clusters_indexes_on_traj_ids(lista):
     clusters = []
-    for item in lista:
-        item = item.strip()
-        if item.startswith("E") and len(item) > 1:
-            clusters.append(int(item[1:]))
+
+    for i, value in enumerate(lista):
+        value = value.strip()
+        if value.startswith("E"):
+            clusters.append(i)
+
     return clusters
 
 def flatten(a):  
@@ -92,7 +96,7 @@ def flatten(a):
         else:  
             res.append(x)  # Append individual elements  
     return res  
-
+"""
 def get_trajectory_segment(cluster_index, trajectory_ids, cluster_list):
     
     if cluster_index < 0 or cluster_index >= len(cluster_list):
@@ -115,6 +119,33 @@ def get_trajectory_segment(cluster_index, trajectory_ids, cluster_list):
             break
 
     expanded_segment = forward_segment + mirror
+    return forward_segment, expanded_segment
+"""
+
+def get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes_on_traj_ids):
+
+    if cluster_iteration == 0:
+        for i, value in enumerate(trajectory_ids):
+            if value == 0:
+                zero_index = i
+                break
+    
+        return trajectory_ids[0:1], trajectory_ids[0:zero_index+1]
+
+    curr_trajectory_id = cluster_indexes_on_traj_ids[cluster_iteration-1]
+    forward_trajectory_id = cluster_indexes_on_traj_ids[cluster_iteration]
+
+    forward_segment = trajectory_ids[curr_trajectory_id+1:forward_trajectory_id+1]
+
+    for i, value in enumerate(forward_segment):
+        if value == 0:
+            zero_index = i
+    
+    back_to_zero = forward_segment[zero_index:]
+    back_to_zero.pop(-1)
+
+    expanded_segment = forward_segment + back_to_zero[::-1]
+
     return forward_segment, expanded_segment
 
 def calculate_battery_consumption(poses, avr_vel=1.2) -> float:
@@ -214,13 +245,3 @@ def extract_unique_ids(data):
             if element not in unique_ids:
                 unique_ids.append(element)
     return unique_ids
- 
-def get_current_trajectory_id(trajectory_ids:list,current_iteration:int) -> int:
-    current = 0
-    for count, element in enumerate(trajectory_ids):
-        if isinstance(element,list):
-            if current == current_iteration:
-                break
-            else:
-                current+=1
-    return count
