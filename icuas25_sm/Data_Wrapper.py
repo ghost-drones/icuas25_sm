@@ -166,7 +166,7 @@ class DataWrapper(Node):
         with self.data_lock:
             return self.poses.get(drone_id, None)
 
-    def get_battery(self, drone_id):
+    def get_battery(self, drone_id) -> BatteryState:
         with self.data_lock:
             return self.batteries.get(drone_id, None)
 
