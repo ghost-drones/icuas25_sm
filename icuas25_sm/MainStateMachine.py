@@ -24,7 +24,7 @@ def state_machine_thread(sm_node):
                                         'Reached': 'End'})
         
         StateMachine.add('DecideMovement', DecideMovement(),
-                           transitions={'Done': 'ClusterNavSup'})
+                           transitions={'Finished': 'ClusterNavSup'})
         
         StateMachine.add('Charging', Charging(),
                            transitions={'Below_Threshold': 'Charging',
@@ -34,6 +34,7 @@ def state_machine_thread(sm_node):
                            transitions={'Sent_Wp': 'ClusterNavSup',
                                         'Navigating_To_Wp': 'ClusterNavSup',
                                         'Reached_Base_and_Needs_Battery': 'Charging',
+                                        'Reached_Intermediary_Step': 'ClusterNavSup',
                                         'Next_Step_Exploration': 'ClusterNavExp'})
         
         StateMachine.add('ClusterNavExp', ClusterNavExp(),

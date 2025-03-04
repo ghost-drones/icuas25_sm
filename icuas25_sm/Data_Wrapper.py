@@ -57,8 +57,8 @@ class DataWrapper(Node):
         self.clusterIteration = 0
 
         self.client_path_planner = self.create_client(PathService, '/ghost/path_planner')
-        while not self.client_path_planner.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info('Service /ghost/path_planner not available, waiting again...')
+        #while not self.client_path_planner.wait_for_service(timeout_sec=1.0):
+        #    self.get_logger().info('Service /ghost/path_planner not available, waiting again...')
 
         # Configuração do QoS para os subscribers
         qos_profile = QoSProfile(
@@ -67,17 +67,18 @@ class DataWrapper(Node):
             reliability=QoSReliabilityPolicy.RELIABLE
         )
 
-        self.create_subscription(
-            String,
-            '/ghost/trajectory_encoded',
-            lambda msg, id=drone_id: self.trajectory_all_callback(msg, id),
-            qos_profile
-        )
 
         self.create_subscription(
             Waypoints,
             '/ghost/waypoints',
             self.waypoints_callback,
+            10
+        )
+
+        self.create_subscription(
+            String,
+            '/ghost/trajectory_encoded',
+            self.trajectory_all_callback,
             10
         )
 
