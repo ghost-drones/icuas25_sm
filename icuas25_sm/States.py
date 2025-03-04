@@ -141,6 +141,8 @@ class ClusterNavExp(State):
         super().__init__(outcomes=["Sent_Wp", "Navigating_To_Wp", "Reached_Intermediary_Step", "Reached_End_Of_Cluster"])
 
         self.data = DataWrapper()
+        
+        #armazena passos até finalização
 
     def execute(self, data):
 
