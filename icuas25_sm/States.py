@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 import rclpy
 from Data_Wrapper import *
-from geometry_msgs.msg import PoseStamped, Point
 from copy import deepcopy
 from smach import State
-from icuas25_msgs.srv import PathService
 from Functions_Wrapper import *
 
 class AwaitingTrajectory(State):
@@ -12,11 +10,12 @@ class AwaitingTrajectory(State):
         super().__init__(outcomes=["Not_Received", "Received_All"])
 
         self.data = DataWrapper()
+        self.drone_ids = self.data.get_drone_ids()
 
     def execute(self, userdata):
         received_value = 0
 
-        for drone_id in self.data.get_drone_ids():
+        for drone_id in self.drone_ids:
             pose = self.data.get_pose(drone_id)
             battery = self.data.get_battery(drone_id)
             trajectory = self.data.get_trajectory(drone_id)
@@ -28,7 +27,7 @@ class AwaitingTrajectory(State):
                 trajectory_path is not None):
                 received_value += 1
 
-        if received_value == len(self.data.get_drone_ids()):
+        if received_value == len(self.drone_ids):
             return 'Received_All'
         else:
             return 'Not_Received'
@@ -41,13 +40,14 @@ class Takeoff(State):
         self.layer_gap = 0.8 #node.get_parameter_value("layer_gap")
         self.tolerance = 1.0 #node.get_parameter_value("tolerance")
         self.first_execution = [True] * len(self.data.get_drone_ids())
+        self.drone_ids = self.data.get_drone_ids()
         self.target = {}
 
     def execute(self, data):
         
         received_value = 0
 
-        for drone_id in self.data.get_drone_ids():
+        for drone_id in self.drone_ids:
             current_pose = self.data.get_pose(drone_id)
 
             if self.first_execution[drone_id-1]: # Envia os setpoints (-1 porque os drone_ids sempre começam com 1)
@@ -68,7 +68,7 @@ class Takeoff(State):
                 if is_pose_reached(current_pose, self.target[drone_id], self.tolerance):
                     received_value += 1
         
-        if received_value == len(self.data.get_drone_ids()):
+        if received_value == len(self.drone_ids):
             return 'Reached'
         else:
             return 'Not_Reached'
@@ -80,6 +80,8 @@ class DecideMovement(State):
         self.data = DataWrapper()
         self.battery_threshold = 30
 
+        self.drone_ids = self.data.get_drone_ids()
+
     def execute(self, data):
 
         needs_recharging = False
@@ -87,13 +89,14 @@ class DecideMovement(State):
         # Encontrar próximo Cluster
         cluster_iteration = self.data.get_clusterIteration()
         cluster_list = get_clusters_list(self.data.get_trajectory_all())
-
-        for drone_id in self.data.get_drone_ids():
+        #next_cluster = cluster_list[cluster_iteration] -> Cluster ID
+        
+        for drone_id in self.drone_ids:
 
             # Encontrar passos até próximo Cluster
             trajectory_ids = self.data.get_trajectory_ids(drone_id)
             segment_till_cluster, segment_with_return = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_list)
-
+        
             # Calcular tempo/bateria necessária
             trajectory_poses = self.data.get_poses_by_ids_list(segment_with_return)
             battery_consumption_on_cluster = calculate_battery_consumption(trajectory_poses)
@@ -123,18 +126,69 @@ class ClusterNavSup(State):
         self.data = DataWrapper()
 
         self.cluster_waypoints = {}
+        self.target_pose = {}
+        self.support_step = 0
+        self.drone_ids = self.data.get_drone_ids()
+        self.command_sent = False
 
         # Armazena passos até a finalização
-        for drone_id in self.data.get_drone_ids():
+        for drone_id in self.drone_ids:
             self.cluster_waypoints[drone_id] = self.data.next_cluster_waypoints[drone_id]
-    
+
+        # Armazena suportes atuais e suportes destino
+        cluster_iteration = self.data.get_clusterIteration()
+        self.last_drone = self.drone_ids[-1]
+        self.support_current_cluster, support_next_cluster = get_support_segments(self.last_drone, cluster_iteration)
+
+        # Armazena suporte mútuo de maior grau em self.mutual_support_index
+        self.mutual_support_index = 0
+        for i in range(min(len(self.support_current_cluster), len(support_next_cluster))):
+            if self.support_current_cluster[i] == support_next_cluster[i] and self.support_current_cluster[i] > self.mutual_support_index:
+                self.mutual_support_index = self.support_current_cluster[i]
+
     def execute(self, data):
 
-        return 'Sent_Wp'
-        #return 'Navigating_To_Wp'
-        #return 'Reached_Intermediary_Step'
-        #return 'Reached_Base_and_Needs_Battery'
-        #return 'Next_Step_Exploration'
+        # Se o próximo passo é uma lista, muda para estado exploração
+        for drone_id in self.drone_ids:
+            if isinstance(self.cluster_waypoints[drone_id][self.support_step], list):
+                return 'Next_Step_Exploration'
+
+        if not self.command_sent: 
+            for drone_id in self.drone_ids:
+
+                current_pose = self.data.get_pose(drone_id)
+
+                if self.support_step == self.mutual_support_index: # Se o passo atual for aquele em que há maior suporte mútuo, buscar caminho mais rápido
+                    current_destination = self.cluster_waypoints[drone_id][self.support_step]
+                    current_support = self.support_current_cluster[self.support_step]
+
+                    # GRANDES CHANCES DE DAR ERRO, VERIFICAR
+                    self.target_pose[drone_id] = self.data.request_traverse_origin(
+                        origin=current_pose, 
+                        destination=self.data.get_pose_by_id(current_destination).position, 
+                        support=self.data.get_pose_by_id(current_support).position
+                    ).path
+                else:
+                    self.target_pose[drone_id] = self.cluster_waypoints[drone_id][self.support_step]
+                
+                duration = calc_duration(current_pose, self.target_pose[drone_id])
+                self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
+
+            self.command_sent = True
+
+            return 'Sent_Wp'
+        else:
+            for drone_id in self.drone_ids:
+                current_pose = self.data.get_pose(drone_id)
+
+                if not is_pose_reached(current_pose, self.target_pose[drone_id]):
+                    return 'Navigating_To_Wp'
+                else:
+                    if self.support_step == len(self.cluster_waypoints[self.last_drone]) and self.cluster_waypoints[self.last_drone][self.support_step] == 0:
+                        return 'Reached_Base_and_Needs_Battery'
+                    else:
+                        self.support_step += 1
+                        return 'Reached_Intermediary_Step'
     
 class ClusterNavExp(State):
     def __init__(self):

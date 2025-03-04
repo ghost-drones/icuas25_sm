@@ -121,3 +121,46 @@ def truncate_after_zero(lst: list) -> list:
         if num == 0:
             break
     return truncated
+
+def sublist_from_first_zero(lst):
+    """
+    Dado uma lista de ints, retorna a sublista iniciando no primeiro 0 (inclusive).
+    Se não houver 0, retorna lista vazia.
+    """
+    for idx, val in enumerate(lst):
+        if val == 0:
+            return lst[idx:]
+    return []
+
+def get_support_segments(data, cluster_index):
+
+    # Identifica os índices onde os elementos são clusters (listas)
+    cluster_positions = [i for i, el in enumerate(data) if isinstance(el, list)]
+    
+    if cluster_index < 0 or cluster_index >= len(cluster_positions):
+        raise ValueError("Índice do cluster inválido.")
+    
+    # Extrai os segmentos de suporte entre os clusters
+    support_segments = []
+    for i in range(1, len(cluster_positions)):
+        start = cluster_positions[i - 1] + 1
+        end = cluster_positions[i]
+        # Suporte entre clusters pode conter vários ints
+        support_segments.append(data[start:end])
+    
+    # Para o primeiro cluster, não há suporte "anterior"
+    if cluster_index == 0:
+        support_current_cluster = [0]
+    else:
+        # O suporte anterior ao cluster i é o suporte entre cluster (i-1) e cluster i
+        seg = support_segments[cluster_index - 1]
+        support_current_cluster = sublist_from_first_zero(seg)
+    
+    # Se houver um cluster seguinte, o suporte após o cluster i é o suporte entre cluster i e cluster i+1
+    if cluster_index < len(cluster_positions) - 1:
+        seg = support_segments[cluster_index]
+        support_next_cluster = sublist_from_first_zero(seg)
+    else:
+        support_next_cluster = []
+    
+    return support_current_cluster, support_next_cluster

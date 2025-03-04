@@ -6,7 +6,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-from geometry_msgs.msg import PoseStamped, Pose
+from geometry_msgs.msg import PoseStamped, Pose, Point
 from sensor_msgs.msg import BatteryState
 from std_msgs.msg import String
 from nav_msgs.msg import Path
@@ -15,6 +15,7 @@ from icuas25_msgs.msg import Waypoints
 
 # Serviços para controle
 from crazyflie_interfaces.srv import GoTo, Land, Takeoff
+from icuas25_msgs.srv import PathService
 
 import threading
 
@@ -52,9 +53,13 @@ class DataWrapper(Node):
         self.land_clients = {}
         self.takeoff_clients = {}
         self.next_cluster_waypoints = {}
-        
+
         self.clusterIteration = 0
 
+        self.client_path_planner = self.create_client(PathService, '/ghost/path_planner')
+        while not self.client_path_planner.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('Service /ghost/path_planner not available, waiting again...')
+            
         # Configuração do QoS para os subscribers
         qos_profile = QoSProfile(
             history=QoSHistoryPolicy.KEEP_LAST,
@@ -249,3 +254,18 @@ class DataWrapper(Node):
             pose = self.get_pose_by_id(wid)
             poses.append(pose)
         return poses
+
+    def request_traverse_origin(self, origin: Point, destination: Point, support: Point):
+        request = PathService.Request()
+        request.origin = Point(x=origin.x, y=origin.y, z=origin.z)
+        request.destination = Point(x=destination.x, y=destination.y, z=destination.z)
+        request.support = Point(x=support.x, y=support.y, z=support.z)
+
+        future = self.client_path_planner.call_async(request)
+        future.add_done_callback(self.handle_path_response)
+
+    def handle_path_response(self, future):
+        try:
+            self.path_response = future.result()
+        except Exception as e:
+            self.get_logger().error(f"Ghost/path_planner service call failed: {e}")
