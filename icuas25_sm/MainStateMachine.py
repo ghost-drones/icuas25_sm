@@ -6,6 +6,7 @@ import threading
 
 from smach import StateMachine, State
 from Data_Wrapper import DataWrapper
+from Control_Wrapper import ControlWrapper
 from States import *
 
 # Função que roda a máquina de estados em uma thread separada
@@ -51,11 +52,13 @@ def main():
 
     # Instancia o DataWrapper (singleton) e o nó da máquina de estados
     data_wrapper = DataWrapper()
+    control_wrapper = ControlWrapper()
     sm_node = Node('main_sm')
 
     # Executor multi-thread para rodar ambos os nós em paralelo
     executor = MultiThreadedExecutor()
     executor.add_node(data_wrapper)
+    executor.add_node(control_wrapper)
     executor.add_node(sm_node)
 
     # Inicia a thread da máquina de estados, passando o nó dela
@@ -67,6 +70,7 @@ def main():
     except KeyboardInterrupt:
         data_wrapper.get_logger().info("Encerrando execução...")
     finally:
+        control_wrapper.destroy_node()
         data_wrapper.destroy_node()
         sm_node.destroy_node()
         rclpy.shutdown()

@@ -81,6 +81,11 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
+  icuas25_sm/Control_Wrapper.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
   icuas25_sm/Functions_Wrapper.py
   DESTINATION lib/${PROJECT_NAME}
 )

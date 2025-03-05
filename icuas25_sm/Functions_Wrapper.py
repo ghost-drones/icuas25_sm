@@ -1,8 +1,9 @@
-from geometry_msgs.msg import PoseStamped,Pose
+from geometry_msgs.msg import PoseStamped,Pose,Point
 from tf_transformations import euler_from_quaternion
 import math
 import numpy as np
 import time
+from copy import deepcopy
 
 def is_pose_reached(current_pose, target_pose, tolerance=1.0) -> bool:
 
@@ -47,14 +48,16 @@ def calc_duration(pos_1, pos_2,avr_vel=1.2) -> float:
         position_01 = pos_1.pose.position
     elif isinstance(pos_1,Pose):
         position_01 = pos_1.position
-    else:
-        return 0.0
+    else: # Point
+        position_01 = pos_1
+
     if isinstance(pos_2,PoseStamped):
         position_02 = pos_2.pose.position
     elif isinstance(pos_2,Pose):
         position_02 = pos_2.position
-    else:
-        return 0.0
+    else: # Point
+        position_02 = pos_2
+    
     position_01_np_array = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
     position_02_np_array = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
 
@@ -245,3 +248,27 @@ def extract_unique_ids(data):
             if element not in unique_ids:
                 unique_ids.append(element)
     return unique_ids
+
+def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap):
+    # Calcula o ângulo e os offsets
+    angle = 2 * math.pi * (drone_id - 1) / (num_drones - 1) if num_drones > 1 else 0.0
+    x_offset = hor_offset * math.cos(angle)
+    y_offset = hor_offset * math.sin(angle)
+    z_offset = drone_id * layer_gap
+
+    # Cria uma cópia independente do objeto de posição
+    if isinstance(target_pose, PoseStamped):
+        new_target = deepcopy(target_pose.pose.position)
+    elif isinstance(target_pose, Pose):
+        new_target = deepcopy(target_pose.position)
+    elif isinstance(target_pose, Point):
+        new_target = deepcopy(target_pose)
+    else:
+        raise TypeError("Tipo de target_pose não suportado: {}".format(type(target_pose)))
+
+    # Aplica os offsets na cópia
+    new_target.x += x_offset
+    new_target.y += y_offset
+    new_target.z += z_offset
+
+    return new_target
