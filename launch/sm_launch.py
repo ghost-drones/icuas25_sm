@@ -20,8 +20,7 @@ def generate_launch_description():
         executable='MainStateMachine.py',
         name='SM_state_machine',
         output='screen',
-        parameters=[state_params],
-        arguments=['--ros-args', '--log-level', 'error']
+        parameters=[state_params]
     )
 
     return LaunchDescription([

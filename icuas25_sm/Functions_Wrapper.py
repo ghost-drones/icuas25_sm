@@ -42,26 +42,42 @@ def get_yaw_from_pose(pose) -> float:
     _, _, yaw = euler_from_quaternion(quat)
     return yaw
 
-def calc_duration(pos_1, pos_2,avr_vel=1.2) -> float:
-    
-    if isinstance(pos_1,PoseStamped):
+def calc_duration(pos_1, pos_2, avr_vel=1.2, yaw_increment=1.0) -> float:
+    if isinstance(pos_1, PoseStamped):
         position_01 = pos_1.pose.position
-    elif isinstance(pos_1,Pose):
+        orientation_01 = pos_1.pose.orientation
+    elif isinstance(pos_1, Pose):
         position_01 = pos_1.position
-    else: # Point
+        orientation_01 = pos_1.orientation
+    else:  # Point
         position_01 = pos_1
+        orientation_01 = None
 
-    if isinstance(pos_2,PoseStamped):
+    if isinstance(pos_2, PoseStamped):
         position_02 = pos_2.pose.position
-    elif isinstance(pos_2,Pose):
+        orientation_02 = pos_2.pose.orientation
+    elif isinstance(pos_2, Pose):
         position_02 = pos_2.position
-    else: # Point
+        orientation_02 = pos_2.orientation
+    else:  # Point
         position_02 = pos_2
+        orientation_02 = None
     
     position_01_np_array = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
     position_02_np_array = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
+    
+    # Calcular diferença de yaw, se as orientações forem fornecidas
+    yaw_diff = 1.0
+    if orientation_01 and orientation_02:
+        yaw_1 = euler_from_quaternion([orientation_01.x, orientation_01.y, orientation_01.z, orientation_01.w])[2]
+        yaw_2 = euler_from_quaternion([orientation_02.x, orientation_02.y, orientation_02.z, orientation_02.w])[2]
+        yaw_diff = np.arctan2(np.sin(yaw_2 - yaw_1), np.cos(yaw_2 - yaw_1))
+        yaw_diff = 1 + yaw_increment * abs(yaw_diff) / np.pi  # Mapeia yaw_diff para o intervalo [1, yaw_inc]
 
-    duration = np.linalg.norm(position_02_np_array - position_01_np_array) / avr_vel
+        if yaw_diff < 1.3:
+            yaw_diff = 1.0
+    
+    duration = yaw_diff*np.linalg.norm(position_02_np_array - position_01_np_array) / avr_vel
 
     return float(duration)
 
@@ -99,31 +115,6 @@ def flatten(a):
         else:  
             res.append(x)  # Append individual elements  
     return res  
-"""
-def get_trajectory_segment(cluster_index, trajectory_ids, cluster_list):
-    
-    if cluster_index < 0 or cluster_index >= len(cluster_list):
-        raise ValueError("Índice do cluster inválido.")
-    
-    start = 0 if cluster_index == 0 else cluster_list[cluster_index - 1] + 1
-    end = cluster_list[cluster_index] + 1
-    forward_segment = trajectory_ids[start:end]
-    
-    if cluster_index == 0:
-        return forward_segment, forward_segment
-    
-    mirror_source = forward_segment[:-1]
-    mirror_reversed = list(reversed(mirror_source))
-    
-    mirror = []
-    for val in mirror_reversed:
-        mirror.append(val)
-        if val == 0:
-            break
-
-    expanded_segment = forward_segment + mirror
-    return forward_segment, expanded_segment
-"""
 
 def get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes_on_traj_ids):
 
@@ -249,9 +240,9 @@ def extract_unique_ids(data):
                 unique_ids.append(element)
     return unique_ids
 
-def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap):
+def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap, wp_order):
     # Calcula o ângulo e os offsets
-    angle = 2 * math.pi * (drone_id - 1) / (num_drones - 1) if num_drones > 1 else 0.0
+    angle = 2 * math.pi * (drone_id - 1) / (num_drones - (wp_order+1))
     x_offset = hor_offset * math.cos(angle)
     y_offset = hor_offset * math.sin(angle)
     z_offset = drone_id * layer_gap
@@ -267,8 +258,11 @@ def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap):
         raise TypeError("Tipo de target_pose não suportado: {}".format(type(target_pose)))
 
     # Aplica os offsets na cópia
-    new_target.x += x_offset
-    new_target.y += y_offset
-    new_target.z += z_offset
+    
+    # Se o drone que vai pro pt de suporte é aquele que será o suporte, offset = 0
+    if not drone_id == wp_order+1:
+        new_target.x += x_offset
+        new_target.y += y_offset
+        new_target.z += z_offset
 
     return new_target

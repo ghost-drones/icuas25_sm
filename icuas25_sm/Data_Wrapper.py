@@ -253,7 +253,10 @@ class DataWrapper(Node):
             if waypoint.id == waypoint_id:
                 return waypoint.pose
 
-        raise ValueError(f"Waypoint com id {waypoint_id} não encontrado.")
+    def get_order_by_id(self, waypoint_id: int) -> int:
+        for waypoint in self.waypoints.waypoints:
+            if waypoint.id == waypoint_id:
+                return waypoint.order
 
     def get_poses_by_ids_list(self, waypoint_ids: list) -> list:
 

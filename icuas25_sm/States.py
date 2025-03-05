@@ -188,7 +188,7 @@ class ClusterNavSup(State):
                         support=self.data.get_pose_by_id(current_support).position
                     ).path
                 else:
-                    self.target_pose[drone_id] = add_offset_2_pose(len(self.drone_ids), drone_id, self.data.get_pose_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), hor_offset=self.hor_offset,layer_gap=self.layer_gap)
+                    self.target_pose[drone_id] = add_offset_2_pose(len(self.drone_ids), drone_id, self.data.get_pose_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), self.hor_offset,self.layer_gap, self.data.get_order_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]))
                 
                 duration = calc_duration(current_pose, self.target_pose[drone_id])
                 self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
@@ -254,13 +254,14 @@ class ClusterNavExp(State):
                 # Usa o índice específico para cada drone
                 if not isinstance(self.data.next_cluster_waypoints[drone_id][-1], list): # Se não for lista, ignora
                     drones_reached += 1 # Já está no destino
+                    self.control.publish_debug(str(drone_id)+"vai voltar?")
                     continue
-
+                self.control.publish_debug(str(drone_id)+"voltou...")
                 target_pose_id = self.data.next_cluster_waypoints[drone_id][-1][self.support_sub_step[drone_id]] # Id
 
                 self.target_pose[drone_id] = self.data.get_pose_by_id(target_pose_id)
 
-                if self.target_pose[drone_id] not in self.unique_ids:
+                if target_pose_id not in self.unique_ids:
                     duration = calc_duration(current_pose, self.target_pose[drone_id])
                     self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
                     self.command_sent[drone_id] = True
@@ -273,7 +274,6 @@ class ClusterNavExp(State):
                         self.command_sent[drone_id] = False
             else:
                 if is_pose_reached(current_pose, self.target_pose[drone_id]):
-                    self.data.log_crazy(["Pose Reached Exp", self.support_sub_step, self.data.next_cluster_waypoints])
                     if self.support_sub_step[drone_id] == len(self.data.next_cluster_waypoints[drone_id][-1]) - 1:
                         drones_reached += 1
                     else:
