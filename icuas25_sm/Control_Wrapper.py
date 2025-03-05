@@ -35,14 +35,23 @@ class ControlWrapper(Node):
         
         self.debug_publisher = self.create_publisher(String, '/ghost/debug', 10)
 
-    def publish_debug(self, message: str) -> None:
-        """
-        Publica uma mensagem string no tópico /ghost/debug.
-        """
+    def publish_debug(self, message: str, ignore=False) -> None:
         msg = String()
-        
-        if isinstance(message, str):
-            msg.data = message
+
+        if not ignore:
+            green = "\033[1;32m"
+            yellow = "\033[1;33m"
+            reset = "\033[0m"
+            idx = message.find("()")
+            if idx != -1:
+                part1 = message[:idx]
+                part2 = message[idx:idx+2]  # A substring "()" (2 caracteres)
+                part3 = message[idx+2:]
+                colored_message = f"{green}{part1}{reset}{yellow}{part2}{reset}{part3}"
+            else:
+                colored_message = message
+
+            msg.data = colored_message
         else:
             msg.data = str(message)
 

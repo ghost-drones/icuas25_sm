@@ -31,7 +31,7 @@ class AwaitingTrajectory(State):
                 received_value += 1
 
         if received_value == len(self.drone_ids):
-            self.control.publish_debug("AwaitingTrajectory -> Takeoff")
+            self.control.publish_debug("AwaitingTrajectory() concluído.")
             return 'Received_All'
         else:
             return 'Not_Received'
@@ -74,7 +74,7 @@ class Takeoff(State):
                     received_value += 1
         
         if received_value == len(self.drone_ids):
-            self.control.publish_debug("Takeoff -> DecideMovement")
+            self.control.publish_debug("Takeoff() concluído.")
             return 'Reached'
         else:
             return 'Not_Reached'
@@ -96,8 +96,8 @@ class DecideMovement(State):
         # Encontrar próximo Cluster
         cluster_iteration = self.data.get_clusterIteration()
         cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
-        #next_cluster = cluster_list[cluster_iteration] -> Cluster ID
-        last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
+        next_cluster = cluster_indexes[cluster_iteration]
+        #last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
 
         for drone_id in self.drone_ids:
 
@@ -125,8 +125,11 @@ class DecideMovement(State):
             segment_till_base = truncate_after_zero(segment_till_cluster)
             for drone_id in self.data.get_drone_ids():
                 self.data.next_cluster_waypoints[drone_id] = segment_till_base
+            
+            self.control.publish_debug("DecideMovement(): Voltar para base e carregar. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id]))
+        else:
+            self.control.publish_debug(f"DecideMovement(): Ida para o Cluster {next_cluster}. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id][:-1]))
         
-        self.control.publish_debug("DecideMovement -> ClusterNavSup")
         return 'Finished'
 
 class ClusterNavSup(State):
@@ -159,18 +162,18 @@ class ClusterNavSup(State):
             
             # Determina o índice de maior suporte mútuo.
             self.mutual_support_index = 0
-            for i in range(min(len(self.support_current_cluster), len(support_next_cluster))):
-                if (self.support_current_cluster[i] == support_next_cluster[i] and 
-                    self.support_current_cluster[i] > self.mutual_support_index):
-                    self.mutual_support_index = self.support_current_cluster[i]
+
+            mutual_id = calculate_mutual_id(self.support_current_cluster, support_next_cluster)
             
+            self.mutual_support_index = calculate_mutual_index(mutual_id, self.data.next_cluster_waypoints[self.last_drone])
+
+            self.control.publish_debug(f"ClusterNavSup(): Maior suporte mútuo {mutual_id}. Index: {self.mutual_support_index}")
             self.first_execution = False
 
         # Se o próximo waypoint para o último drone for uma lista, muda para o estado de exploração.
         if isinstance(self.data.next_cluster_waypoints[self.last_drone][self.support_step], list):
             self.support_step = 0
             self.first_execution = True
-            self.control.publish_debug("ClusterNavSup -> ClusterNavExp")
             return 'Next_Step_Exploration'
 
         # Se o comando ainda não foi enviado, calcula e envia os setpoints para cada drone.
@@ -193,9 +196,11 @@ class ClusterNavSup(State):
                 duration = calc_duration(current_pose, self.target_pose[drone_id])
                 self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
             
+            if self.support_step == self.mutual_support_index:
+                self.control.publish_debug(f"ClusterNavSup(): Traversing {self.data.next_cluster_waypoints[drone_id][self.support_step]}")
+
             self.command_sent = True
 
-            self.control.publish_debug("ClusterNavSup -> ClusterNavSup (Sent Wp Support)")
             return 'Sent_Wp'
         else:
             # Verifica se todos os drones já atingiram o waypoint atual.
@@ -214,9 +219,13 @@ class ClusterNavSup(State):
                     self.cluster_waypoints[self.last_drone][self.support_step] == 0):
                     self.support_step = 0
                     self.first_execution = True
-                    self.control.publish_debug("ClusterNavSup -> Charging")
                     return 'Reached_Base_and_Needs_Battery'
                 else:
+                    if self.support_step == self.mutual_support_index:
+                        self.control.publish_debug(f"ClusterNavSup(): Finalizado Traversing {self.data.next_cluster_waypoints[drone_id][self.support_step]}.")
+                    else:
+                        self.control.publish_debug(f"ClusterNavSup(): Finalizado Waypoint Id {self.data.next_cluster_waypoints[drone_id][self.support_step]}.")
+
                     self.support_step += 1
                     self.command_sent = False
                     return 'Reached_Intermediary_Step'
@@ -236,42 +245,46 @@ class ClusterNavExp(State):
         self.support_sub_step = {drone_id: 0 for drone_id in self.drone_ids}
         self.command_sent = {drone_id: False for drone_id in self.drone_ids}
 
+        self.counter_print = 0
+
     def execute(self, data):
 
         if self.first_execution:
             # Se a intenção for manter a lista completa, não sobrescreva os waypoints.
             # Se necessário, defina um índice de finalização para cada drone.
             last_drone = self.drone_ids[-1]
-            self.unique_ids = extract_unique_ids(self.data.get_trajectory_ids(last_drone))
+            unique_ids = extract_unique_ids(self.data.get_trajectory_ids(last_drone))
             self.first_execution = False
+
+            cluster_iteration = self.data.get_clusterIteration()
+            cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
+            next_cluster = cluster_indexes[cluster_iteration]
+
+            self.control.publish_debug(f"ClusterNavExp(): Cluster {next_cluster} começando exploração.")
             
+            for drone_id in self.drone_ids:
+                if isinstance(self.data.next_cluster_waypoints[drone_id][-1], list):
+                    for i, value in enumerate(self.data.next_cluster_waypoints[drone_id][-1]):
+                        if value in unique_ids:
+                            self.data.next_cluster_waypoints[drone_id][-1].pop(i)
+
         drones_reached = 0
 
         for drone_id in self.drone_ids:
             current_pose = self.data.get_pose(drone_id)
-
+            
             if not self.command_sent[drone_id]:
                 # Usa o índice específico para cada drone
-                if not isinstance(self.data.next_cluster_waypoints[drone_id][-1], list): # Se não for lista, ignora
+                if not isinstance(self.data.next_cluster_waypoints[drone_id][-1], list) or self.data.next_cluster_waypoints[drone_id][-1] == []: # Se não for lista, ignora
                     drones_reached += 1 # Já está no destino
-                    self.control.publish_debug(str(drone_id)+"vai voltar?")
-                    continue
-                self.control.publish_debug(str(drone_id)+"voltou...")
-                target_pose_id = self.data.next_cluster_waypoints[drone_id][-1][self.support_sub_step[drone_id]] # Id
+                else:
+                    target_pose_id = self.data.next_cluster_waypoints[drone_id][-1][self.support_sub_step[drone_id]] # Id
 
-                self.target_pose[drone_id] = self.data.get_pose_by_id(target_pose_id)
+                    self.target_pose[drone_id] = self.data.get_pose_by_id(target_pose_id)
 
-                if target_pose_id not in self.unique_ids:
                     duration = calc_duration(current_pose, self.target_pose[drone_id])
                     self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
                     self.command_sent[drone_id] = True
-                else:
-                    # Verifica se é o último waypoint
-                    if self.support_sub_step[drone_id] == len(self.data.next_cluster_waypoints[drone_id]) - 1:
-                        drones_reached += 1
-                    else:
-                        self.support_sub_step[drone_id] += 1
-                        self.command_sent[drone_id] = False
             else:
                 if is_pose_reached(current_pose, self.target_pose[drone_id]):
                     if self.support_sub_step[drone_id] == len(self.data.next_cluster_waypoints[drone_id][-1]) - 1:
@@ -287,9 +300,9 @@ class ClusterNavExp(State):
             self.support_sub_step = {drone_id: 0 for drone_id in self.drone_ids}
             self.command_sent = {drone_id: False for drone_id in self.drone_ids}
 
-
+            self.control.publish_debug(f"ClusterNavExp(): Finalizado.")
             self.data.increase_clusterIteration()
-            self.control.publish_debug("ClusterNavExp -> DecideMovement")
+            
             return "Reached_End_Of_Cluster"
         else:
             return "Navigating"

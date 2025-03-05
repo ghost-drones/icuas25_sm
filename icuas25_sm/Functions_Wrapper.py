@@ -266,3 +266,23 @@ def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap, 
         new_target.z += z_offset
 
     return new_target
+
+def calculate_mutual_id(a, b):
+
+    mutual = 0
+
+    for i in range(min(len(a), len(b))):
+        if (a[i] == b[i] and i > mutual):
+            mutual = a[i]
+    
+    return mutual
+
+def calculate_mutual_index(mutual_id, current_target_ids):
+
+    mutual_index = 0
+    
+    for i, value in enumerate(current_target_ids):
+        if value == mutual_id:
+            mutual_index = i
+    
+    return mutual_index
