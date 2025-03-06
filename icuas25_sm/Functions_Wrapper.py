@@ -1,27 +1,86 @@
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped,Pose,Point
 from tf_transformations import euler_from_quaternion
 import math
 import numpy as np
+import time
+from copy import deepcopy
+from crazyflie_py.uav_trajectory import Trajectory, Polynomial4D
 
-def is_pose_reached(current_pose: PoseStamped, target_pose: PoseStamped, tolerance=1.0) -> bool:
-    dx = current_pose.pose.position.x - target_pose.pose.position.x
-    dy = current_pose.pose.position.y - target_pose.pose.position.y
-    dz = current_pose.pose.position.z - target_pose.pose.position.z
+def is_pose_reached(current_pose, target_pose, tolerance=1.0) -> bool:
+
+    if isinstance(current_pose,PoseStamped):
+        current_pose = current_pose.pose.position
+    elif isinstance(current_pose,Pose):
+        current_pose = current_pose.position
+    else: # Point
+        current_pose = current_pose
+    
+    if isinstance(target_pose,PoseStamped):
+        target_pose = target_pose.pose.position
+    elif isinstance(target_pose,Pose):
+        target_pose = target_pose.position
+    else: # Point
+        target_pose = target_pose
+    
+    dx = current_pose.x - target_pose.x
+    dy = current_pose.y - target_pose.y
+    dz = current_pose.z - target_pose.z
     distance = math.sqrt(dx*dx + dy*dy + dz*dz)
     return distance < tolerance
 
-def get_yaw_from_pose(pose: PoseStamped) -> float:
-    quat = [pose.pose.orientation.x,
-            pose.pose.orientation.y,
-            pose.pose.orientation.z,
-            pose.pose.orientation.w]
+def get_yaw_from_pose(pose) -> float:
+    if isinstance(pose,PoseStamped):
+        pose = pose.pose.orientation
+    elif isinstance(pose,Pose):
+        pose = pose.orientation
+    else:
+        return 0.0
+    
+    quat = [pose.x,
+            pose.y,
+            pose.z,
+            pose.w]
     _, _, yaw = euler_from_quaternion(quat)
     return yaw
 
-def calc_duration(pos_1: PoseStamped, pos_2: PoseStamped, avr_vel=1.2) -> float:
-    p1 = np.array([pos_1.pose.position.x, pos_1.pose.position.y, pos_1.pose.position.z])
-    p2 = np.array([pos_2.pose.position.x, pos_2.pose.position.y, pos_2.pose.position.z])
-    return np.linalg.norm(p2 - p1) / avr_vel
+def calc_duration(pos_1, pos_2, avr_vel=1.2, yaw_increment=0.0) -> float:
+    if isinstance(pos_1, PoseStamped):
+        position_01 = pos_1.pose.position
+        orientation_01 = pos_1.pose.orientation
+    elif isinstance(pos_1, Pose):
+        position_01 = pos_1.position
+        orientation_01 = pos_1.orientation
+    else:  # Point
+        position_01 = pos_1
+        orientation_01 = None
+
+    if isinstance(pos_2, PoseStamped):
+        position_02 = pos_2.pose.position
+        orientation_02 = pos_2.pose.orientation
+    elif isinstance(pos_2, Pose):
+        position_02 = pos_2.position
+        orientation_02 = pos_2.orientation
+    else:  # Point
+        position_02 = pos_2
+        orientation_02 = None
+    
+    position_01_np_array = np.array([position_01.x, position_01.y, position_01.z], dtype='float32')
+    position_02_np_array = np.array([position_02.x, position_02.y, position_02.z], dtype='float32')
+    
+    # Calcular diferença de yaw, se as orientações forem fornecidas
+    yaw_diff = 1.0
+    if orientation_01 and orientation_02:
+        yaw_1 = euler_from_quaternion([orientation_01.x, orientation_01.y, orientation_01.z, orientation_01.w])[2]
+        yaw_2 = euler_from_quaternion([orientation_02.x, orientation_02.y, orientation_02.z, orientation_02.w])[2]
+        yaw_diff = np.arctan2(np.sin(yaw_2 - yaw_1), np.cos(yaw_2 - yaw_1))
+        yaw_diff = 1 + yaw_increment * abs(yaw_diff) / np.pi  # Mapeia yaw_diff para o intervalo [1, yaw_inc]
+
+        if yaw_diff < 1.3:
+            yaw_diff = 1.0
+    
+    duration = yaw_diff*np.linalg.norm(position_02_np_array - position_01_np_array) / avr_vel
+
+    return float(duration)
 
 def get_flat_index(trajectories_id, step, substep):
     steps = trajectories_id
@@ -38,3 +97,280 @@ def get_flat_index(trajectories_id, step, substep):
     else:
         flat_index += 0
     return flat_index
+
+def get_clusters_indexes_on_traj_ids(lista):
+    clusters = []
+
+    for i, value in enumerate(lista):
+        value = value.strip()
+        if value.startswith("E"):
+            clusters.append(i)
+
+    return clusters
+
+def flatten(a):  
+    res = []  
+    for x in a:  
+        if isinstance(x, list):  
+            res.extend(flatten(x))  # Recursively flatten nested lists  
+        else:  
+            res.append(x)  # Append individual elements  
+    return res  
+
+def get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes_on_traj_ids):
+
+    if cluster_iteration == 0:
+        for i, value in enumerate(trajectory_ids):
+            if value == 0:
+                zero_index = i
+                break
+    
+        return trajectory_ids[0:1], trajectory_ids[0:zero_index+1]
+
+    curr_trajectory_id = cluster_indexes_on_traj_ids[cluster_iteration-1]
+    forward_trajectory_id = cluster_indexes_on_traj_ids[cluster_iteration]
+
+    forward_segment = trajectory_ids[curr_trajectory_id+1:forward_trajectory_id+1]
+
+    support_segment = forward_segment[:-1]
+
+    return forward_segment, support_segment
+
+def calculate_battery_consumption(poses, avr_vel=1.2) -> float:
+    """
+    Calcula o percentual de bateria consumido por um trajeto definido por uma lista de pontos PoseStamped.
+    
+    A lógica é a seguinte:
+      - Para cada segmento entre dois pontos consecutivos, utiliza a função calc_duration para determinar
+        o tempo de deslocamento.
+      - A cada 80 segundos (1min20s) há um consumo de 10% da bateria.
+      
+    Assim, o consumo percentual total é dado por:
+    
+        consumo (%) = (tempo_total / 80) * 10
+        
+    Args:
+        poses (list): Lista de pontos do trajeto (PoseStamped).
+        avr_vel (float): Velocidade média utilizada no cálculo (default=1.2).
+    
+    Returns:
+        float: Porcentagem da bateria consumida pelo trajeto.
+    """
+    total_duration = 0.0
+    # Calcula o tempo de trajeto entre pontos consecutivos
+    for i in range(len(poses) - 1):
+        total_duration += calc_duration(poses[i], poses[i+1], avr_vel)
+    
+    # Converte o tempo total para percentual consumido.
+    # Cada 80 segundos correspondem a 10% de bateria.
+    battery_consumed = (total_duration / 80) * 10
+    return battery_consumed
+
+def truncate_after_zero(lst: list) -> list:
+    """
+    Retorna uma nova lista contendo todos os elementos de 'lst' até a primeira ocorrência de 0 (inclusive).
+    
+    Exemplo:
+        Entrada: [1, 2, 3, 4, 0, 2, 2, 1]
+        Saída: [1, 2, 3, 4, 0]
+    """
+    truncated = []
+    for num in lst:
+        truncated.append(num)
+        if num == 0:
+            break
+    return truncated
+
+def sublist_from_first_zero(lst):
+    """
+    Dado uma lista de ints, retorna a sublista iniciando no primeiro 0 (inclusive).
+    Se não houver 0, retorna lista vazia.
+    """
+    for idx, val in enumerate(lst):
+        if val == 0:
+            return lst[idx:]
+    return []
+
+def get_support_segments(data, cluster_index):
+
+    # Identifica os índices onde os elementos são clusters (listas)
+    cluster_positions = [i for i, el in enumerate(data) if isinstance(el, list)]
+    
+    if cluster_index < 0 or cluster_index >= len(cluster_positions):
+        raise ValueError("Índice do cluster inválido.")
+    
+    # Extrai os segmentos de suporte entre os clusters
+    support_segments = []
+    for i in range(1, len(cluster_positions)):
+        start = cluster_positions[i - 1] + 1
+        end = cluster_positions[i]
+        # Suporte entre clusters pode conter vários ints
+        support_segments.append(data[start:end])
+    
+    # Para o primeiro cluster, não há suporte "anterior"
+    if cluster_index == 0:
+        support_current_cluster = [0]
+    else:
+        # O suporte anterior ao cluster i é o suporte entre cluster (i-1) e cluster i
+        seg = support_segments[cluster_index - 1]
+        support_current_cluster = sublist_from_first_zero(seg)
+    
+    # Se houver um cluster seguinte, o suporte após o cluster i é o suporte entre cluster i e cluster i+1
+    if cluster_index < len(cluster_positions) - 1:
+        seg = support_segments[cluster_index]
+        support_next_cluster = sublist_from_first_zero(seg)
+    else:
+        support_next_cluster = []
+    
+    return support_current_cluster, support_next_cluster
+
+def extract_unique_ids(data):
+    unique_ids = []
+    for element in data:
+        if isinstance(element, list):
+            pass
+        else:
+            if element not in unique_ids:
+                unique_ids.append(element)
+    return unique_ids
+
+def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap, wp_order, back2origin):
+    
+    z_plus = 0
+
+    if back2origin:
+        z_plus = 1.0
+
+    # Calcula o ângulo e os offsets
+    angle = 2 * math.pi * (drone_id - 1) / (num_drones - (wp_order+1))
+    x_offset = hor_offset * math.cos(angle)
+    y_offset = hor_offset * math.sin(angle)
+    z_offset = drone_id * layer_gap + z_plus
+
+    # Cria uma cópia independente do objeto de posição
+    if isinstance(target_pose, PoseStamped):
+        new_target = deepcopy(target_pose.pose.position)
+    elif isinstance(target_pose, Pose):
+        new_target = deepcopy(target_pose.position)
+    elif isinstance(target_pose, Point):
+        new_target = deepcopy(target_pose)
+    else:
+        raise TypeError("Tipo de target_pose não suportado: {}".format(type(target_pose)))
+
+    # Aplica os offsets na cópia
+    
+    # Se o drone que vai pro pt de suporte é aquele que será o suporte, offset = 0
+    if (not back2origin) and (not drone_id == wp_order+1):
+        new_target.x += x_offset
+        new_target.y += y_offset
+        new_target.z += z_offset
+    
+    if back2origin:
+        if not drone_id == wp_order+1:
+            new_target.x += x_offset
+            new_target.y += y_offset
+        new_target.z += z_offset
+
+    return new_target
+
+def calculate_mutual_id(a, b):
+
+    mutual = 0
+
+    for i in range(min(len(a), len(b))):
+        if (a[i] == b[i] and i > mutual):
+            mutual = a[i]
+    
+    return mutual
+
+def calculate_mutual_index(mutual_id, current_target_ids):
+
+    mutual_index = 0
+    
+    for i, value in enumerate(current_target_ids):
+        if value == mutual_id:
+            mutual_index = i
+    
+    return mutual_index
+
+def generate_intermediates(start_pose, end_pose, step=1.0):
+    """
+    Gera pontos intermediários entre start_pose e end_pose.
+    start_pose e end_pose devem ser do tipo Pose.
+    """
+    intermediates = []
+    start_point = start_pose.position
+    end_point = end_pose.position
+
+    dx = end_point.x - start_point.x
+    dy = end_point.y - start_point.y
+    dz = end_point.z - start_point.z
+
+    distance = math.sqrt(dx**2 + dy**2 + dz**2)
+    if distance == 0:
+        return []
+
+    num_steps = max(1, int(distance // step))
+    step_size = 1.0 / num_steps
+
+    for i in range(1, num_steps + 1):
+        ratio = i * step_size
+        pose = Pose()
+        pose.position.x = start_point.x + dx * ratio
+        pose.position.y = start_point.y + dy * ratio
+        pose.position.z = start_point.z + dz * ratio
+        pose.orientation = end_pose.orientation
+        intermediates.append(pose)
+
+    return intermediates
+
+def create_linear_trajectory(start_pos:np.array, end_pos:np.array, yaw:float, duration:float) -> Trajectory:
+    """Cria uma trajetória linear entre dois pontos com yaw constante.
+
+    Args:
+        start_pos (list): Posição inicial [x, y, z].
+        end_pos (list): Posição final [x, y, z].
+        yaw (float): Ângulo de yaw (em radianos).
+        duration (float): Duração da trajetória (em segundos).
+
+    Returns:
+        Trajectory: Objeto de trajetória.
+    """
+    # Cria uma nova trajetória
+    traj = Trajectory()
+
+    # Coeficientes para cada eixo (4º grau)
+    def calculate_coeff(start:np.array, end:np.array, duration:float) -> np.array:
+        return np.array([
+            start,
+            (end - start) / duration,  # Termo linear
+            0.0,  # Termo quadrático
+            0.0,  # Termo cúbico
+            0.0,  # Termo quártico
+            0.0,   # Termo quíntico
+            0.0,
+            0.0
+        ])
+
+    # Calcula os coeficientes para x, y, z
+    px = calculate_coeff(start_pos[0], end_pos[0], duration)
+    py = calculate_coeff(start_pos[1], end_pos[1], duration)
+    pz = calculate_coeff(start_pos[2], end_pos[2], duration)
+
+    # Coeficientes para yaw (constante)
+    pyaw = np.array([yaw] + [0.0] * 7)
+
+    
+    # Cria um polinômio 4D com os coeficientes calculados
+    poly = Polynomial4D(
+        duration=duration,
+        px=px,
+        py=py,
+        pz=pz,
+        pyaw=pyaw
+    )
+    # Define os polinômios da trajetória
+    traj.polynomials = [poly]
+    traj.duration = duration
+
+    return traj

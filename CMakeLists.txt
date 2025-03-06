@@ -41,9 +41,6 @@ find_package(ament_cmake_python REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(rclpy REQUIRED)
-find_package(yasmin REQUIRED)
-find_package(yasmin_ros REQUIRED)
-find_package(yasmin_viewer REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(example_interfaces REQUIRED)
 
@@ -55,9 +52,6 @@ set(LIB ${CMAKE_PROJECT_NAME}_lib)
 set(DEPENDENCIES
   rclcpp
   rclcpp_action
-  yasmin
-  yasmin_ros
-  yasmin_viewer
   nav_msgs
   example_interfaces
 )
@@ -77,6 +71,11 @@ install(PROGRAMS
 
 install(PROGRAMS
   icuas25_sm/Data_Wrapper.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(PROGRAMS
+  icuas25_sm/Control_Wrapper.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
