@@ -29,7 +29,7 @@ def state_machine_thread(sm_node):
         
         StateMachine.add('Charging', Charging(),
                            transitions={'Below_Threshold': 'Charging',
-                                        'Above_Threshold': 'DecideMovement'})
+                                        'Above_Threshold': 'Takeoff'})
         
         StateMachine.add('ClusterNavSup', ClusterNavSup(),
                            transitions={'Sent_Wp': 'ClusterNavSup',
@@ -40,7 +40,8 @@ def state_machine_thread(sm_node):
         
         StateMachine.add('ClusterNavExp', ClusterNavExp(),
                            transitions={'Navigating': 'ClusterNavExp',
-                                        'Reached_End_Of_Cluster': 'DecideMovement'})
+                                        'Reached_End_Of_Cluster': 'DecideMovement',
+                                        'Low_Battery': 'DecideMovement'})
         
     outcome = sm.execute()
     sm_node.get_logger().info(f"Finished run: {outcome}")

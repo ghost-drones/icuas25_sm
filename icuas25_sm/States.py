@@ -56,12 +56,11 @@ class Takeoff(State):
             current_pose = self.data.get_pose(drone_id)
 
             if self.first_execution[drone_id-1]: # Envia os setpoints (-1 porque os drone_ids sempre começam com 1)
-
                 target_pose = deepcopy(current_pose)
                 target_pose.pose.position.z = self.layer_gap * drone_id
 
                 duration = calc_duration(current_pose, target_pose)
-
+                
                 self.data.send_takeoff(drone_id, target_pose.pose.position.z, duration_sec=duration)
                 self.target[drone_id] = target_pose
 
@@ -75,6 +74,7 @@ class Takeoff(State):
         
         if received_value == len(self.drone_ids):
             self.control.publish_debug("Takeoff() concluído.")
+            self.first_execution = [True] * len(self.data.get_drone_ids())
             return 'Reached'
         else:
             return 'Not_Reached'
@@ -85,7 +85,6 @@ class DecideMovement(State):
 
         self.data = DataWrapper()
         self.control = ControlWrapper()
-        self.battery_threshold = 30
 
         self.drone_ids = self.data.get_drone_ids()
 
@@ -96,39 +95,31 @@ class DecideMovement(State):
         # Encontrar próximo Cluster
         cluster_iteration = self.data.get_clusterIteration()
         cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
+        self.control.publish_debug("DecideMovement(): " + str(self.data.get_trajectory_all()))
         next_cluster = cluster_indexes[cluster_iteration]
-        #last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
+        last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
+        #self.control.publish_debug("DecideMovement(): " + str(cluster_iteration) + str(cluster_indexes) + str(next_cluster)+ str(last_drone_traj_ids))
 
         for drone_id in self.drone_ids:
 
             # Encontrar passos até próximo Cluster
             trajectory_ids = self.data.get_trajectory_ids(drone_id)
 
-            segment_till_cluster, segment_with_return = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes)
-
-            # Calcular tempo/bateria necessária
-            trajectory_poses = self.data.get_poses_by_ids_list(flatten(segment_with_return))
-            battery_consumption_on_cluster = calculate_battery_consumption(trajectory_poses)
-            
-            # Drone conseguem fazer leitura do Cluster com bateria atual?
-            current_battery = self.data.get_battery(drone_id).percentage
-            battery_after_cluster = current_battery - battery_consumption_on_cluster
+            segment_till_cluster, ___ = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes)
+            segment_till_cluster_next, ___ = get_trajectory_segment(cluster_iteration+1, trajectory_ids, cluster_indexes)
 
             # Sim (Cluster = próxima prioridade)
             self.data.next_cluster_waypoints[drone_id] = segment_till_cluster
-
-            if battery_after_cluster < self.battery_threshold:
-                needs_recharging = True
         
-        if needs_recharging:
+        if self.data.need_charging:
             # Não (Cluster = 0)
-            segment_till_base = truncate_after_zero(segment_till_cluster)
+            segment_till_base = truncate_after_zero(segment_till_cluster_next)
             for drone_id in self.data.get_drone_ids():
                 self.data.next_cluster_waypoints[drone_id] = segment_till_base
             
             self.control.publish_debug("DecideMovement(): Voltar para base e carregar. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id]))
         else:
-            self.control.publish_debug(f"DecideMovement(): Ida para o Cluster {next_cluster}. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id][:-1]))
+            self.control.publish_debug(f"DecideMovement(): Ida para Cluster. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id][:-1]))
         
         return 'Finished'
 
@@ -176,12 +167,15 @@ class ClusterNavSup(State):
             self.first_execution = True
             return 'Next_Step_Exploration'
 
+        back2origin = True if not isinstance(self.data.next_cluster_waypoints[self.last_drone][-1], list) else False
+        
         # Se o comando ainda não foi enviado, calcula e envia os setpoints para cada drone.
         if not self.command_sent:
             for drone_id in self.drone_ids:
                 current_pose = self.data.get_pose(drone_id)
 
-                if self.support_step == self.mutual_support_index:# Se suporte mútuo, envia o ponto traversado que possui LOS com a origem
+                # Se suporte mútuo, envia o ponto traversado que possui LOS com a origem. (E se não estiver voltando pra base)
+                if self.support_step == self.mutual_support_index and back2origin == False:
                     current_destination = self.data.next_cluster_waypoints[drone_id][self.support_step+1]
                     current_support = self.data.next_cluster_waypoints[drone_id][self.support_step]
 
@@ -191,12 +185,16 @@ class ClusterNavSup(State):
                         support=self.data.get_pose_by_id(current_support).position
                     ).path
                 else:
-                    self.target_pose[drone_id] = add_offset_2_pose(len(self.drone_ids), drone_id, self.data.get_pose_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), self.hor_offset,self.layer_gap, self.data.get_order_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]))
+                    
+                    if back2origin == True and self.data.next_cluster_waypoints[drone_id][self.support_step] == 0:
+                        self.target_pose[drone_id] = add_offset_2_pose(len(self.drone_ids), drone_id, self.data.get_pose_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), 0.8, 0.5, 0, back2origin)
+                    else:
+                        self.target_pose[drone_id] = add_offset_2_pose(len(self.drone_ids), drone_id, self.data.get_pose_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), self.hor_offset,self.layer_gap, self.data.get_order_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), back2origin)
                 
                 duration = calc_duration(current_pose, self.target_pose[drone_id])
                 self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
             
-            if self.support_step == self.mutual_support_index:
+            if self.support_step == self.mutual_support_index and isinstance(self.data.next_cluster_waypoints[self.last_drone][-1], list):
                 self.control.publish_debug(f"ClusterNavSup(): Traversing {self.data.next_cluster_waypoints[drone_id][self.support_step]}")
 
             self.command_sent = True
@@ -234,11 +232,12 @@ class ClusterNavSup(State):
 
 class ClusterNavExp(State):
     def __init__(self):
-        super().__init__(outcomes=["Navigating", "Reached_End_Of_Cluster"])
+        super().__init__(outcomes=["Navigating", "Reached_End_Of_Cluster", 'Low_Battery'])
         self.data = DataWrapper()
         self.control = ControlWrapper()
         self.drone_ids = self.data.get_drone_ids()
         self.first_execution = True
+        self.battery_threshold = 80
 
         # Inicializa os dicionários para cada drone (SM)
         self.target_pose = {drone_id: None for drone_id in self.drone_ids}
@@ -247,8 +246,22 @@ class ClusterNavExp(State):
 
         self.counter_print = 0
 
-    def execute(self, data):
+    def needs_recharge(self, drone_id, cluster_iteration, cluster_indexes, trajectory_ids):
+        segment_till_cluster, ___ = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes)
+        segment_till_base = truncate_after_zero(segment_till_cluster)
+        
+        trajectory_poses = self.data.get_poses_by_ids_list(flatten(segment_till_base))
+        battery_consumption_to_base = calculate_battery_consumption(trajectory_poses)
 
+        current_battery = self.data.get_battery(drone_id).percentage
+        real_battery = current_battery - battery_consumption_to_base
+
+        if real_battery < self.battery_threshold:
+            return True
+        else:
+            return False
+
+    def execute(self, data):
         if self.first_execution:
             # Se a intenção for manter a lista completa, não sobrescreva os waypoints.
             # Se necessário, defina um índice de finalização para cada drone.
@@ -260,7 +273,7 @@ class ClusterNavExp(State):
             cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
             next_cluster = cluster_indexes[cluster_iteration]
 
-            self.control.publish_debug(f"ClusterNavExp(): Cluster {next_cluster} começando exploração.")
+            self.control.publish_debug(f"ClusterNavExp(): Começando exploração.")
             
             for drone_id in self.drone_ids:
                 if isinstance(self.data.next_cluster_waypoints[drone_id][-1], list):
@@ -268,6 +281,26 @@ class ClusterNavExp(State):
                         if value in unique_ids:
                             self.data.next_cluster_waypoints[drone_id][-1].pop(i)
 
+        cluster_iteration = self.data.get_clusterIteration()
+        cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
+
+        # Verificação da Bateria
+        needs_charge = False
+        for drone_id in self.drone_ids:
+            trajectory_ids = self.data.get_trajectory_ids(drone_id)
+            if self.needs_recharge(drone_id, cluster_iteration, cluster_indexes, trajectory_ids) == True:
+                self.control.publish_debug(f"ClusterNavExp(): "+str(cluster_iteration)+ " aaaa "+str(cluster_indexes)+ " aaaa "+str(trajectory_ids))
+                needs_charge = True
+
+        if needs_charge:
+            self.data.update_expIteration_before_charge(self.support_sub_step)
+            self.first_execution = True
+            self.target_pose = {drone_id: None for drone_id in self.drone_ids}
+            self.command_sent = {drone_id: False for drone_id in self.drone_ids}
+            self.control.publish_debug(f"ClusterNavExp(): Retornando da Exploração por falta de bateria. ExpIteration: {self.support_sub_step}")
+            self.data.need_charging = True
+            return 'Low_Battery'
+        
         drones_reached = 0
 
         for drone_id in self.drone_ids:
@@ -313,9 +346,10 @@ class Charging(State):
 
         self.data = DataWrapper()
         self.control = ControlWrapper()
-        self.bat_lim = 90.0
+        self.bat_threshold = 89.9
         self.drone_ids = self.data.get_drone_ids()
-
+        self.last_drone = self.drone_ids[-1]
+        
         # A cada 1min 20s, perde-se 10% da bateria. (A cada segundo, perde-se 1/8% de bateria)
         self.decrease_battery_value_per_second = 1/8
         
@@ -324,55 +358,39 @@ class Charging(State):
         self.first_execution = True
 
     def execute(self, data):
+        
         if self.first_execution:
             for drone_id in self.drone_ids:
-                pose_stamped = self.data.get_pose(drone_id)
-                if isinstance(pose_stamped,PoseStamped):
-                    pose1 = pose_stamped.pose.position
-                    pose2 = Pose(x=pose1.x,y=pose1.y,z=0.0)
-                    height = pose1.z
-                    _duration = calc_duration(pose1,pose2)
-                self.data.send_land(drone_id,height,_duration)
-
-                trajectory_ids = self.data.get_trajectory_ids(drone_id)
+                self.data.send_land(drone_id,0.0, 3.0)
                 current_iteration = self.data.get_clusterIteration()
-                current = get_current_trajectory_id(trajectory_ids,current_iteration)
-                
-                duration = 0.0
-                path = []
-                for element in trajectory_ids[:current]:
-                    if isinstance(element,int):
-                        path.append(element)
-                    elif isinstance(element,list):
-                        for el in element:
-                            path.append(el)
-                for pos1, pos2 in zip(path, path[1:]):
-                    if isinstance(pos1,int) and isinstance(pos2,int):
-                        pose1 = self.data.get_pose_by_id(pos1)
-                        pose2 = self.data.get_pose_by_id(pos1)
-                        duration += calc_duration(pose1,pose2)
-                
-                self.battery_usage_forecast[drone_id] = duration*self.decrease_battery_value_per_second
+                cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
+                iteration_on_traj_id = cluster_indexes[current_iteration]
 
-            drone_id_max_attery_forecast = max(
-                self.drone_ids, key=lambda drone_id: self.battery_usage_forecast[drone_id]
-            )
-            max_battery_usage_forecast = self.battery_usage_forecast[drone_id_max_attery_forecast]
-            
-            # garantindo que tenha no minimo 20% ao voltar
-            max_battery_usage_forecast += 20.0
-            
-            if max_battery_usage_forecast < 90.0 and max_battery_usage_forecast > 30.0:
-                self.bat_lim = max_battery_usage_forecast
-            else:
-                self.bat_lim = 30.0
+                traj_until_finish = self.data.get_trajectory_ids(self.last_drone)[iteration_on_traj_id:]
+                trajectory_poses = self.data.get_poses_by_ids_list(flatten(traj_until_finish))
+                battery_consumption_until_finish = calculate_battery_consumption(trajectory_poses)
 
+                self.bat_threshold = battery_consumption_until_finish + 10.0
+
+                if self.bat_threshold > 89.9:
+                    self.bat_threshold = 89.9
+                
+            
+            self.control.publish_debug(f"Charging(): Threshold {self.bat_threshold:.1f}. Consumo até o final: {battery_consumption_until_finish:.1f}")        
             self.first_execution = False
+
+        drones_charged = 0
+
+        for drone_id in self.drone_ids:
+            battery = self.data.get_battery(drone_id).percentage
+
+            if battery >= self.bat_threshold:
+                drones_charged += 1
+        
+        if drones_charged == len(self.drone_ids):
+            self.first_execution = True
+            self.control.publish_debug(f"Charging(): Finalizado.")
+            self.data.need_charging = False
+            return 'Above_Threshold'
         else:
-            for drone_id in self.drone_ids:
-                battery = self.data.get_battery(drone_id).percentage
-                if battery > self.bat_lim:  
-                    self.drone_ids.remove(drone_id)
-                if len(self.drone_ids) == 0:
-                    return 'Above_Threshold'
             return 'Below_Threshold'

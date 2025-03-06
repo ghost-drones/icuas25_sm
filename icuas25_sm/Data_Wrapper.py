@@ -55,6 +55,8 @@ class DataWrapper(Node):
         self.next_cluster_waypoints = {}
 
         self.clusterIteration = 0
+        self.expIteration_before_charge = {}
+        self.need_charging = False
 
         self.client_path_planner = self.create_client(PathService, '/ghost/path_planner')
         #while not self.client_path_planner.wait_for_service(timeout_sec=1.0):
@@ -199,6 +201,14 @@ class DataWrapper(Node):
         with self.data_lock:
             self.clusterIteration += 1
 
+    def get_expIteration_before_charge(self):
+        with self.data_lock:
+            return self.expIteration_before_charge
+        
+    def update_expIteration_before_charge(self, value):
+        with self.data_lock:
+            self.expIteration_before_charge = value
+             
     def send_takeoff(self, drone_id, height, duration_sec, group_mask=0):
         client = self.takeoff_clients[drone_id]
         request = Takeoff.Request()

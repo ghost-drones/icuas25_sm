@@ -131,16 +131,9 @@ def get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes_on
 
     forward_segment = trajectory_ids[curr_trajectory_id+1:forward_trajectory_id+1]
 
-    for i, value in enumerate(forward_segment):
-        if value == 0:
-            zero_index = i
-    
-    back_to_zero = forward_segment[zero_index:]
-    back_to_zero.pop(-1)
+    support_segment = forward_segment[:-1]
 
-    expanded_segment = forward_segment + back_to_zero[::-1]
-
-    return forward_segment, expanded_segment
+    return forward_segment, support_segment
 
 def calculate_battery_consumption(poses, avr_vel=1.2) -> float:
     """
@@ -240,12 +233,18 @@ def extract_unique_ids(data):
                 unique_ids.append(element)
     return unique_ids
 
-def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap, wp_order):
+def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap, wp_order, back2origin):
+    
+    z_plus = 0
+
+    if back2origin:
+        z_plus = 1.0
+
     # Calcula o ângulo e os offsets
     angle = 2 * math.pi * (drone_id - 1) / (num_drones - (wp_order+1))
     x_offset = hor_offset * math.cos(angle)
     y_offset = hor_offset * math.sin(angle)
-    z_offset = drone_id * layer_gap
+    z_offset = drone_id * layer_gap + z_plus
 
     # Cria uma cópia independente do objeto de posição
     if isinstance(target_pose, PoseStamped):
@@ -260,9 +259,15 @@ def add_offset_2_pose(num_drones, drone_id, target_pose, hor_offset, layer_gap, 
     # Aplica os offsets na cópia
     
     # Se o drone que vai pro pt de suporte é aquele que será o suporte, offset = 0
-    if not drone_id == wp_order+1:
+    if (not back2origin) and (not drone_id == wp_order+1):
         new_target.x += x_offset
         new_target.y += y_offset
+        new_target.z += z_offset
+    
+    if back2origin:
+        if not drone_id == wp_order+1:
+            new_target.x += x_offset
+            new_target.y += y_offset
         new_target.z += z_offset
 
     return new_target
