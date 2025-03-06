@@ -12,9 +12,6 @@
   
   <depend>rclpy</depend>
   <depend>rclcpp</depend>
-  <depend>yasmin</depend>
-  <depend>yasmin_ros</depend>
-  <depend>yasmin_viewer</depend>
   <depend>nav_msgs</depend>
   <depend>example_interfaces</depend>
 

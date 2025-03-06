@@ -42,7 +42,7 @@ def get_yaw_from_pose(pose) -> float:
     _, _, yaw = euler_from_quaternion(quat)
     return yaw
 
-def calc_duration(pos_1, pos_2, avr_vel=1.2, yaw_increment=1.0) -> float:
+def calc_duration(pos_1, pos_2, avr_vel=1.0, yaw_increment=1.0) -> float:
     if isinstance(pos_1, PoseStamped):
         position_01 = pos_1.pose.position
         orientation_01 = pos_1.pose.orientation

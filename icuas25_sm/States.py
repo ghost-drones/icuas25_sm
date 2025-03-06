@@ -95,10 +95,8 @@ class DecideMovement(State):
         # Encontrar próximo Cluster
         cluster_iteration = self.data.get_clusterIteration()
         cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
-        self.control.publish_debug("DecideMovement(): " + str(self.data.get_trajectory_all()))
-        next_cluster = cluster_indexes[cluster_iteration]
-        last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
-        #self.control.publish_debug("DecideMovement(): " + str(cluster_iteration) + str(cluster_indexes) + str(next_cluster)+ str(last_drone_traj_ids))
+        #next_cluster = cluster_indexes[cluster_iteration]
+        #last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
 
         for drone_id in self.drone_ids:
 
@@ -137,7 +135,7 @@ class ClusterNavSup(State):
         self.command_sent = False
         self.first_execution = True
         self.layer_gap = 0.5
-        self.hor_offset = 2.0
+        self.hor_offset = 0.5
 
     def execute(self, data):
         if self.first_execution:
@@ -195,7 +193,9 @@ class ClusterNavSup(State):
                 self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
             
             if self.support_step == self.mutual_support_index and isinstance(self.data.next_cluster_waypoints[self.last_drone][-1], list):
-                self.control.publish_debug(f"ClusterNavSup(): Traversing {self.data.next_cluster_waypoints[drone_id][self.support_step]}")
+                self.control.publish_debug(f"ClusterNavSup(): Enviado Traversing {self.data.next_cluster_waypoints[drone_id][self.support_step]}")
+            else:
+                self.control.publish_debug(f"ClusterNavSup(): Enviado Waypoint Id {self.data.next_cluster_waypoints[drone_id][self.support_step]}.")
 
             self.command_sent = True
 
@@ -237,7 +237,7 @@ class ClusterNavExp(State):
         self.control = ControlWrapper()
         self.drone_ids = self.data.get_drone_ids()
         self.first_execution = True
-        self.battery_threshold = 80
+        self.battery_threshold = 30
 
         # Inicializa os dicionários para cada drone (SM)
         self.target_pose = {drone_id: None for drone_id in self.drone_ids}
@@ -246,12 +246,20 @@ class ClusterNavExp(State):
 
         self.counter_print = 0
 
-    def needs_recharge(self, drone_id, cluster_iteration, cluster_indexes, trajectory_ids):
-        segment_till_cluster, ___ = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes)
-        segment_till_base = truncate_after_zero(segment_till_cluster)
+    def needs_recharge_dumb(self, drone_id, current_pose):
+        #segment_till_cluster, ___ = get_trajectory_segment(cluster_iteration, trajectory_ids, cluster_indexes)
+        #segment_till_base = truncate_after_zero(segment_till_cluster)
         
-        trajectory_poses = self.data.get_poses_by_ids_list(flatten(segment_till_base))
-        battery_consumption_to_base = calculate_battery_consumption(trajectory_poses)
+        #trajectory_poses = self.data.get_poses_by_ids_list(flatten(segment_till_base))
+
+        origin_pos = Point()
+        origin_pos.x = 0.0
+        origin_pos.y = 0.0
+        origin_pos.z = 1.0
+
+        trajectory_poses = [current_pose, origin_pos]
+
+        battery_consumption_to_base = 1.5*calculate_battery_consumption(trajectory_poses)
 
         current_battery = self.data.get_battery(drone_id).percentage
         real_battery = current_battery - battery_consumption_to_base
@@ -260,7 +268,7 @@ class ClusterNavExp(State):
             return True
         else:
             return False
-
+        
     def execute(self, data):
         if self.first_execution:
             # Se a intenção for manter a lista completa, não sobrescreva os waypoints.
@@ -287,10 +295,12 @@ class ClusterNavExp(State):
         # Verificação da Bateria
         needs_charge = False
         for drone_id in self.drone_ids:
-            trajectory_ids = self.data.get_trajectory_ids(drone_id)
-            if self.needs_recharge(drone_id, cluster_iteration, cluster_indexes, trajectory_ids) == True:
-                self.control.publish_debug(f"ClusterNavExp(): "+str(cluster_iteration)+ " aaaa "+str(cluster_indexes)+ " aaaa "+str(trajectory_ids))
+            current_pose = self.data.get_pose(drone_id)
+            #trajectory_ids = self.data.get_trajectory_ids(drone_id)
+            if self.needs_recharge_dumb(drone_id, current_pose) == True:
                 needs_charge = True
+            #if self.needs_recharge(drone_id, cluster_iteration, cluster_indexes, trajectory_ids) == True:
+            #    needs_charge = True
 
         if needs_charge:
             self.data.update_expIteration_before_charge(self.support_sub_step)
