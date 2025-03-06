@@ -12,10 +12,13 @@ from std_msgs.msg import String
 from nav_msgs.msg import Path
 from Functions_Wrapper import *
 from icuas25_msgs.msg import Waypoints
+from numpy import ndarray
+from crazyflie_interfaces.msg import TrajectoryPolynomialPiece
 
 # Serviços para controle
-from crazyflie_interfaces.srv import GoTo, Land, Takeoff
+from crazyflie_interfaces.srv import GoTo, Land, Takeoff, UploadTrajectory, StartTrajectory
 from icuas25_msgs.srv import PathService
+from typing import Union
 
 import threading
 
@@ -52,9 +55,12 @@ class DataWrapper(Node):
         self.go_to_clients = {}
         self.land_clients = {}
         self.takeoff_clients = {}
+        self.upload_trajectory_clients = {}
+        self.start_trajectory_clients = {}
+        
         self.next_cluster_waypoints = {}
-
         self.clusterIteration = 0
+        self.finished = False
         self.expIteration_before_charge = {}
         self.need_charging = False
 
@@ -95,10 +101,14 @@ class DataWrapper(Node):
             go_to_service = f'/cf_{drone_id}/go_to'
             land_service = f'/cf_{drone_id}/land'
             takeoff_service = f'/cf_{drone_id}/takeoff'
+            upload_trajectory_service = f'/cf_{drone_id}/upload_trajectory'
+            start_trajectory_service = f'/cf_{drone_id}/start_trajectory'
 
             self.go_to_clients[drone_id] = self.create_client(GoTo, go_to_service)
             self.land_clients[drone_id] = self.create_client(Land, land_service)
             self.takeoff_clients[drone_id] = self.create_client(Takeoff, takeoff_service)
+            self.upload_trajectory_clients[drone_id] = self.create_client(UploadTrajectory, upload_trajectory_service)
+            self.start_trajectory_clients[drone_id] = self.create_client(StartTrajectory, start_trajectory_service)
 
             self.create_subscription(
                 PoseStamped,
@@ -236,7 +246,7 @@ class DataWrapper(Node):
         request.duration.sec = int(duration_sec)
         request.duration.nanosec = int((duration_sec - int(duration_sec)) * 1e9)
         client.call_async(request)
-
+        
     def send_land(self, drone_id, height, duration_sec, group_mask=0):
         client = self.land_clients[drone_id]
         request = Land.Request()

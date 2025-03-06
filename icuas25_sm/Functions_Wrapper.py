@@ -4,6 +4,7 @@ import math
 import numpy as np
 import time
 from copy import deepcopy
+from crazyflie_py.uav_trajectory import Trajectory, Polynomial4D
 
 def is_pose_reached(current_pose, target_pose, tolerance=1.0) -> bool:
 
@@ -42,7 +43,7 @@ def get_yaw_from_pose(pose) -> float:
     _, _, yaw = euler_from_quaternion(quat)
     return yaw
 
-def calc_duration(pos_1, pos_2, avr_vel=1.0, yaw_increment=1.0) -> float:
+def calc_duration(pos_1, pos_2, avr_vel=1.2, yaw_increment=0.0) -> float:
     if isinstance(pos_1, PoseStamped):
         position_01 = pos_1.pose.position
         orientation_01 = pos_1.pose.orientation
@@ -291,3 +292,85 @@ def calculate_mutual_index(mutual_id, current_target_ids):
             mutual_index = i
     
     return mutual_index
+
+def generate_intermediates(start_pose, end_pose, step=1.0):
+    """
+    Gera pontos intermediários entre start_pose e end_pose.
+    start_pose e end_pose devem ser do tipo Pose.
+    """
+    intermediates = []
+    start_point = start_pose.position
+    end_point = end_pose.position
+
+    dx = end_point.x - start_point.x
+    dy = end_point.y - start_point.y
+    dz = end_point.z - start_point.z
+
+    distance = math.sqrt(dx**2 + dy**2 + dz**2)
+    if distance == 0:
+        return []
+
+    num_steps = max(1, int(distance // step))
+    step_size = 1.0 / num_steps
+
+    for i in range(1, num_steps + 1):
+        ratio = i * step_size
+        pose = Pose()
+        pose.position.x = start_point.x + dx * ratio
+        pose.position.y = start_point.y + dy * ratio
+        pose.position.z = start_point.z + dz * ratio
+        pose.orientation = end_pose.orientation
+        intermediates.append(pose)
+
+    return intermediates
+
+def create_linear_trajectory(start_pos:np.array, end_pos:np.array, yaw:float, duration:float) -> Trajectory:
+    """Cria uma trajetória linear entre dois pontos com yaw constante.
+
+    Args:
+        start_pos (list): Posição inicial [x, y, z].
+        end_pos (list): Posição final [x, y, z].
+        yaw (float): Ângulo de yaw (em radianos).
+        duration (float): Duração da trajetória (em segundos).
+
+    Returns:
+        Trajectory: Objeto de trajetória.
+    """
+    # Cria uma nova trajetória
+    traj = Trajectory()
+
+    # Coeficientes para cada eixo (4º grau)
+    def calculate_coeff(start:np.array, end:np.array, duration:float) -> np.array:
+        return np.array([
+            start,
+            (end - start) / duration,  # Termo linear
+            0.0,  # Termo quadrático
+            0.0,  # Termo cúbico
+            0.0,  # Termo quártico
+            0.0,   # Termo quíntico
+            0.0,
+            0.0
+        ])
+
+    # Calcula os coeficientes para x, y, z
+    px = calculate_coeff(start_pos[0], end_pos[0], duration)
+    py = calculate_coeff(start_pos[1], end_pos[1], duration)
+    pz = calculate_coeff(start_pos[2], end_pos[2], duration)
+
+    # Coeficientes para yaw (constante)
+    pyaw = np.array([yaw] + [0.0] * 7)
+
+    
+    # Cria um polinômio 4D com os coeficientes calculados
+    poly = Polynomial4D(
+        duration=duration,
+        px=px,
+        py=py,
+        pz=pz,
+        pyaw=pyaw
+    )
+    # Define os polinômios da trajetória
+    traj.polynomials = [poly]
+    traj.duration = duration
+
+    return traj

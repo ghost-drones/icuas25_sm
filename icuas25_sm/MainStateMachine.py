@@ -29,7 +29,8 @@ def state_machine_thread(sm_node):
         
         StateMachine.add('Charging', Charging(),
                            transitions={'Below_Threshold': 'Charging',
-                                        'Above_Threshold': 'Takeoff'})
+                                        'Above_Threshold': 'Takeoff',
+                                        'Run_Finished': 'End'})
         
         StateMachine.add('ClusterNavSup', ClusterNavSup(),
                            transitions={'Sent_Wp': 'ClusterNavSup',

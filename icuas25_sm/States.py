@@ -95,6 +95,12 @@ class DecideMovement(State):
         # Encontrar próximo Cluster
         cluster_iteration = self.data.get_clusterIteration()
         cluster_indexes = get_clusters_indexes_on_traj_ids(self.data.get_trajectory_all())
+
+        if cluster_iteration == len(cluster_indexes):
+            self.data.finished = True
+        
+        self.control.publish_debug("DecideMovement(): " + str(cluster_indexes) + "aaa "+ str(cluster_iteration))
+
         #next_cluster = cluster_indexes[cluster_iteration]
         #last_drone_traj_ids = self.data.get_trajectory_ids(self.drone_ids[-1])
 
@@ -109,13 +115,13 @@ class DecideMovement(State):
             # Sim (Cluster = próxima prioridade)
             self.data.next_cluster_waypoints[drone_id] = segment_till_cluster
         
-        if self.data.need_charging:
+        if self.data.need_charging or self.data.finished:
             # Não (Cluster = 0)
             segment_till_base = truncate_after_zero(segment_till_cluster_next)
             for drone_id in self.data.get_drone_ids():
                 self.data.next_cluster_waypoints[drone_id] = segment_till_base
             
-            self.control.publish_debug("DecideMovement(): Voltar para base e carregar. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id]))
+            self.control.publish_debug("DecideMovement(): Voltar para base e carregar. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id] + "Finished?" + str(self.data.finished)))
         else:
             self.control.publish_debug(f"DecideMovement(): Ida para Cluster. Waypoints necessários: " + str(self.data.next_cluster_waypoints[drone_id][:-1]))
         
@@ -190,8 +196,9 @@ class ClusterNavSup(State):
                         self.target_pose[drone_id] = add_offset_2_pose(len(self.drone_ids), drone_id, self.data.get_pose_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), self.hor_offset,self.layer_gap, self.data.get_order_by_id(self.data.next_cluster_waypoints[drone_id][self.support_step]), back2origin)
                 
                 duration = calc_duration(current_pose, self.target_pose[drone_id])
-                self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
-            
+                #self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
+                self.control.send_upload_trajectory(drone_id, 1, current_pose, self.target_pose[drone_id], duration=duration)
+
             if self.support_step == self.mutual_support_index and isinstance(self.data.next_cluster_waypoints[self.last_drone][-1], list):
                 self.control.publish_debug(f"ClusterNavSup(): Enviado Traversing {self.data.next_cluster_waypoints[drone_id][self.support_step]}")
             else:
@@ -326,7 +333,8 @@ class ClusterNavExp(State):
                     self.target_pose[drone_id] = self.data.get_pose_by_id(target_pose_id)
 
                     duration = calc_duration(current_pose, self.target_pose[drone_id])
-                    self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
+                    #self.data.send_go_to(drone_id, self.target_pose[drone_id], duration_sec=duration)
+                    self.control.send_upload_trajectory(drone_id, 1, current_pose, self.target_pose[drone_id], duration=duration)
                     self.command_sent[drone_id] = True
             else:
                 if is_pose_reached(current_pose, self.target_pose[drone_id]):
@@ -352,7 +360,7 @@ class ClusterNavExp(State):
 
 class Charging(State):
     def __init__(self):
-        super().__init__(outcomes=["Below_Threshold", "Above_Threshold"])
+        super().__init__(outcomes=["Below_Threshold", "Above_Threshold", "Run_Finished"])
 
         self.data = DataWrapper()
         self.control = ControlWrapper()
@@ -369,6 +377,13 @@ class Charging(State):
 
     def execute(self, data):
         
+        if self.data.finished:
+            for drone_id in self.drone_ids:
+                self.data.send_land(drone_id,0.0, 3.0)
+            
+            self.control.publish_end()
+            return "Run_Finished"
+    
         if self.first_execution:
             for drone_id in self.drone_ids:
                 self.data.send_land(drone_id,0.0, 3.0)
